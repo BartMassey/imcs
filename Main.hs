@@ -53,8 +53,7 @@ real_main = do
   let offset = fromJust (getArgInt args OptionOffset)
   let time = getArgInt args OptionTime
   mfh <- getArgFile args OptionPosition ReadMode
-  let time' = case time of
-                Just t -> Just (1000 * t)
+  let time' = fmap (1000 *) time
   handle_w <- connectionInit (3589 + offset) White
   handle_b <- connectionInit (3590 + offset) Black
   problem <- case mfh  of
