@@ -1,15 +1,42 @@
 Copyright © 2007-2009 Bart Massey
 ALL RIGHTS RESERVED
+Please see the file COPYING in this distribution for license
+information.
 
 Internet MiniChess Server
 
 This package is a communications server and referee for
 games of MiniChess (http://wiki.cs.pdx.edu/cs542/mini-chess.html)
 played online.  It currently conforms to the MiniChess 2007
-rules, and is XBoard compatible: see the URL above for a
-patched version of XBoard that will work with this program.
+rules.
+
+The program is not known to be XBoard compatible, but might
+be.  See the URL above for a patched version of XBoard that
+will play MiniChess.
 
 Building this package requires a Haskell compiler; it is
 known to work with GHC 6.8 or later.  It also requires my
 parseargs argument parser, available from Hackage
 (http://hackage.haskell.org/cgi-bin/hackage-scripts/package/parseargs).
+
+The program will log to standard output.  It waits for a TCP
+connection from a white player (first) and a black player
+(second).  Then it accepts moves from each side in turn on
+its connection, after prompting with the game state.
+
+Invocation:
+
+  The --position <position-file> argument allows starting
+  from an arbitrary game position defined in the given
+  position file.
+
+  The --offset <n> argument allows offsetting the white and
+  black server connection ports by n from their respective
+  default offsets of 3589 and 3590, so that multiple server
+  instances can run on the same host.
+
+  The --time <n> argument turns turns on time conrols,
+  allowing n seconds per side for the entire game.  The
+  protocol changes in this case to report time controls.
+  Though the internals of the server support it, there is
+  currently no way to give an asymmetric time control.
