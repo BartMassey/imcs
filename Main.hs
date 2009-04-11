@@ -45,7 +45,12 @@ run_game problem this@(h, t) other = do
   result <- doTurn this other problem
   case result of
     Nothing -> return ()
-    Just (problem', t') -> run_game problem' other (h, t')
+    Just (problem', t') -> do
+        let side = problemToMove problem
+        let side' = problemToMove problem'
+        if side' == side 
+          then run_game problem' this other
+          else run_game problem' other (h, t')
 
 real_main :: IO ()
 real_main = do

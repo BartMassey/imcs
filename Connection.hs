@@ -6,6 +6,7 @@
 
 module Connection(CState, connectionInit, doTurn) where
 
+import Data.Maybe
 import Control.Monad
 import Control.Monad.ST
 import Network
@@ -41,12 +42,10 @@ chop = dropWhile ((flip elem) [' ', '\t', '\r', '\n'])
 chomp :: String -> String
 chomp = reverse . chop . reverse . chop
 
-read_move :: Handle -> IO Move
+read_move :: Handle -> IO (Maybe Move)
 read_move handle = do
   move_str <- hGetLine handle
-  case readMove (chomp move_str) of
-    Just move -> return move
-    Nothing -> error ("ill-formatted move string '" ++ move_str ++ "'")
+  return (readMove (chomp move_str))
 
 update_time :: Maybe Int -> Int -> Maybe Int
 update_time Nothing _ = Nothing
@@ -93,19 +92,26 @@ doTurn (this_h, this_t) (other_h, other_t) problem = do
       hPutStrLn stderr ([ loser ] ++ " loses on time")
       return Nothing
     _ -> do
-      let () = runST (check_move mov)
-      let (captured, stop, problem') = runST (execute_move mov)
-      case stop of
-        True -> do
-          case captured of
-            'K' -> hPutStrLn stderr "B wins"
-            'k' -> hPutStrLn stderr "W wins"
-            _   -> hPutStrLn stderr "draw"
-          return Nothing
+      let ok = runST (check_move mov)
+      case ok of
         False -> do
-          hPutStrLn stderr (showMove mov)
-          hPutStrLn other_h ("! " ++ showMove mov)
-          return (Just (problem', time'))
+          hPutStrLn stderr ("? illegal move")
+          hPutStrLn this_h ("? illegal move")
+          return (Just (problem, time'))
+        True -> do
+          let (captured, stop, problem') =
+                runST (execute_move (fromJust mov))
+          case stop of
+            True -> do
+              case captured of
+                'K' -> hPutStrLn stderr "B wins"
+                'k' -> hPutStrLn stderr "W wins"
+                _   -> hPutStrLn stderr "draw"
+              return Nothing
+            False -> do
+              hPutStrLn stderr (showMove (fromJust mov))
+              hPutStrLn other_h ("! " ++ showMove (fromJust mov))
+              return (Just (problem', time'))
   where
     execute_move mov = do
       state <- animateProblem problem
@@ -113,9 +119,8 @@ doTurn (this_h, this_t) (other_h, other_t) problem = do
       stop <- gameOver state' undo
       problem' <- snapshotState state'
       return (capture undo, stop, problem')
-    check_move mov = do
+    check_move (Just mov) = do
       state <- animateProblem problem
       candidates <- moves state
-      unless (elem mov candidates)
-             (error ("illegal move" ++ showMove mov))
-      return ()    
+      return (elem mov candidates)
+    check_move Nothing = return False
