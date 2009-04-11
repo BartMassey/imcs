@@ -6,11 +6,11 @@
 
 HC = ghc
 HCFLAGS = -O2 # -prof -auto-all # -debug # -Wall 
-SRCS = Board.hs State.hs Main.hs Connection.hs ParseArgs.hs
+SRCS = Board.hs State.hs Main.hs Connection.hs
 
 mcref: $(SRCS)
-	$(HC) $(HCFLAGS) --make -o mcref Main.hs
+	$(HC) $(HCFLAGS) --make -o imcs Main.hs
 
 clean:
-	-rm -f mcref
+	-rm -f imcs
 	-rm -f *.o *.hi *.hp *.prof

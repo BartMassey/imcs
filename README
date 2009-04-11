@@ -1,4 +1,15 @@
 Copyright © 2007-2009 Bart Massey
 ALL RIGHTS RESERVED
 
-Internet Mini-Chess Server
+Internet MiniChess Server
+
+This package is a communications server and referee for
+games of MiniChess (http://wiki.cs.pdx.edu/cs542/mini-chess.html)
+played online.  It currently conforms to the MiniChess 2007
+rules, and is XBoard compatible: see the URL above for a
+patched version of XBoard that will work with this program.
+
+Building this package requires a Haskell compiler; it is
+known to work with GHC 6.8 or later.  It also requires my
+parseargs argument parser, available from Hackage
+(http://hackage.haskell.org/cgi-bin/hackage-scripts/package/parseargs).

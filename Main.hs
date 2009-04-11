@@ -12,7 +12,7 @@ import Control.Monad
 import Control.Monad.ST
 import System.IO
 import Network
-import ParseArgs
+import System.Console.ParseArgs
 
 import Board
 import State
