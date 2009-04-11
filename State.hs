@@ -200,7 +200,18 @@ find_moves brd side square 'b' = do
   urs <- trace_ur brd side square
   drs <- trace_dr brd side square
   dls <- trace_dl brd side square
-  return (zip (repeat square) (concat [uls, urs, drs, dls]))
+  let diags = concat [uls, urs, drs, dls]
+  ups <- jump_up brd side square
+  lefts <- jump_left brd side square
+  downs <- jump_down brd side square
+  rights <- jump_right brd side square
+  let orthogs = concat [ups, lefts, downs, rights]
+  bads <- filterM (filter_empty brd) orthogs
+  return (zip (repeat square) (diags ++ bads))
+  where
+    filter_empty brd square = do
+      sq <- getBoardSquare brd square
+      return (sq == '.')
 find_moves brd side square 'q' = do
   ups <- trace_up brd side square
   lefts <- trace_left brd side square
