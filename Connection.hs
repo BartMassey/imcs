@@ -60,20 +60,18 @@ get_clock_time_ms = do
 show_times :: Handle -> Maybe Int -> Maybe Int -> IO ()
 show_times h this_t other_t = do
   hPutStr h "?"
-  case this_t of
-    Just t -> do
-      hPutStr h " "
-      time_fmt t
-  case other_t of
-    Just t -> do
-      hPutStr h " "
-      time_fmt t
+  show_time this_t
+  show_time other_t
   hPutStrLn h ""
   where
     time_fmt t = do
         let mins = t `div` 60000
         let secs = fromIntegral (t - 60000 * mins) / 1000 :: Double
         hPrintf h "%02d:%06.3f" mins secs
+    show_time (Just t) = do
+      hPutStr h " "
+      time_fmt t
+    show_time Nothing = return ()
 
 
 doTurn :: CState -> CState -> Problem -> IO (Maybe (Problem, Maybe Int))
