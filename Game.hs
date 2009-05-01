@@ -4,7 +4,7 @@
 --- Please see the file COPYING in the source
 --- distribution of this software for license terms.
 
-module Game(CState, doTurn) where
+module Game(CState, doGame) where
 
 import Data.Maybe
 import Control.Monad
@@ -13,21 +13,16 @@ import System.IO
 import System.Time
 import Text.Printf
 
+import Readline
 import Board
 import State
 
 type CState = (Handle, Maybe Int)
 
-chop :: String -> String
-chop = dropWhile ((flip elem) [' ', '\t', '\r', '\n'])
-
-chomp :: String -> String
-chomp = reverse . chop . reverse . chop
-
 read_move :: Handle -> IO (Maybe Move)
 read_move handle = do
-  move_str <- hGetLine handle
-  return (readMove (chomp move_str))
+  move_str <- hReadline handle
+  return (readMove move_str)
 
 update_time :: Maybe Int -> Int -> Maybe Int
 update_time Nothing _ = Nothing
@@ -55,8 +50,8 @@ show_times h this_t other_t = do
     show_time Nothing = return ()
 
 
-doTurn :: CState -> CState -> Problem -> IO (Maybe (Problem, Maybe Int))
-doTurn (this_h, this_t) (other_h, other_t) problem = do
+do_turn :: CState -> CState -> Problem -> IO (Maybe (Problem, Maybe Int))
+do_turn (this_h, this_t) (other_h, other_t) problem = do
   hPutStrLn this_h ""
   hPutStr this_h (showProblem problem)
   hPutStrLn stderr ""
@@ -106,3 +101,23 @@ doTurn (this_h, this_t) (other_h, other_t) problem = do
       candidates <- moves state
       return (elem mov candidates)
     check_move Nothing = return False
+
+run_game :: Problem -> CState -> CState -> IO ()
+run_game problem this@(h, t) other = do
+  result <- do_turn this other problem
+  case result of
+    Nothing -> return ()
+    Just (problem', t') -> do
+        let side = problemToMove problem
+        let side' = problemToMove problem'
+        if side' == side 
+          then run_game problem' this other
+          else run_game problem' other (h, t')
+
+doGame :: Maybe Int -> (Handle, Handle) -> IO ()
+doGame time (handle_w, handle_b) = do
+  case problemToMove startProblem of
+    White -> run_game startProblem (handle_w, time) (handle_b, time)
+    Black -> run_game startProblem (handle_w, time) (handle_b, time)
+  hClose handle_w
+  hClose handle_b
