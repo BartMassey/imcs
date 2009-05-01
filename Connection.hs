@@ -13,24 +13,24 @@ import System.IO
 
 masterInit :: Int -> IO Socket
 masterInit port_num = do
-  hPutStrLn stderr ("listening for game on port " ++ show port_num)
+  putStrLn ("listening for game on port " ++ show port_num)
   listenOn (PortNumber . fromIntegral $  port_num)
 
 masterAccept :: Socket -> IO Handle
 masterAccept listen_socket = do
   (handle, hostname, client_port) <- Network.accept listen_socket
-  hPutStrLn stderr ("handling host " ++ hostname ++
+  putStrLn ("handling host " ++ hostname ++
                     " port " ++ show client_port)
   hSetBuffering handle LineBuffering
   return handle
 
 connectionInit :: Int -> Char -> IO Handle
 connectionInit port_num side = do
-  hPutStrLn stderr ("listening for " ++ [side] ++
+  putStrLn ("listening for " ++ [side] ++
                     " on port " ++ show port_num)
   listen_socket <- listenOn (PortNumber . fromIntegral $ port_num)
   (handle, hostname, _) <- Network.accept listen_socket
-  hPutStrLn stderr ("got " ++ [side] ++
+  putStrLn ("got " ++ [side] ++
                     " host " ++ hostname ++
                     " on port " ++ show port_num)
   hPutStrLn handle [side]

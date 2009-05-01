@@ -54,8 +54,8 @@ do_turn :: CState -> CState -> Problem -> IO (Maybe (Problem, Maybe Int))
 do_turn (this_h, this_t) (other_h, other_t) problem = do
   hPutStrLn this_h ""
   hPutStr this_h (showProblem problem)
-  hPutStrLn stderr ""
-  hPutStr stderr (showProblem problem)
+  putStrLn ""
+  putStr (showProblem problem)
   show_times this_h this_t other_t
   show_times stderr this_t other_t
   then_msecs <- get_clock_time_ms
@@ -66,13 +66,13 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
   case time' of
     Just 0 -> do
       let loser = (showSide . problemToMove) problem
-      hPutStrLn stderr ([ loser ] ++ " loses on time")
+      putStrLn ([ loser ] ++ " loses on time")
       return Nothing
     _ -> do
       let ok = runST (check_move mov)
       case ok of
         False -> do
-          hPutStrLn stderr ("? illegal move")
+          putStrLn ("? illegal move")
           hPutStrLn this_h ("? illegal move")
           return (Just (problem, time'))
         True -> do
@@ -81,12 +81,12 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
           case stop of
             True -> do
               case captured of
-                'K' -> hPutStrLn stderr "B wins"
-                'k' -> hPutStrLn stderr "W wins"
-                _   -> hPutStrLn stderr "draw"
+                'K' -> putStrLn "B wins"
+                'k' -> putStrLn "W wins"
+                _   -> putStrLn "draw"
               return Nothing
             False -> do
-              hPutStrLn stderr (showMove (fromJust mov))
+              putStrLn (showMove (fromJust mov))
               hPutStrLn other_h ("! " ++ showMove (fromJust mov))
               return (Just (problem', time'))
   where

@@ -11,6 +11,8 @@ import Data.Maybe
 import System.IO
 import Control.Monad
 import Network (withSocketsDo)
+import Control.Concurrent
+import Control.Concurrent.MVar
 
 import System.Console.ParseArgs
 
@@ -28,17 +30,28 @@ argd = [ Arg { argIndex = OptionPort,
                argData = argDataDefaulted "port" ArgtypeInt 3589,
                argDesc = "Server port" } ]
 
+connection_helper :: Int -> Char -> IO (MVar Handle)
+connection_helper port side =  do
+  m <- newEmptyMVar
+  forkIO $ do
+    handle <- connectionInit port side
+    putMVar m handle
+  return m
+
+run_game :: (Int, Int) -> IO ()
+run_game (port_w, port_b) = do
+  m_w <- connection_helper port_w 'W'
+  m_b <- connection_helper port_b 'B'
+  h_w <- takeMVar m_w
+  h_b <- takeMVar m_b
+  doGame (Just 600000) (h_w, h_b)
+
 run_service :: Int -> IO ()
 run_service port = do
   master <- masterInit port
   forever $ do
     client <- masterAccept master
     hClose client
-
-run_game (port_w, port_b) = do
-  handle_w <- connectionInit port_w 'W'
-  handle_b <- connectionInit port_b 'B'
-  doGame (Just 600000) (handle_w, handle_b)
 
 main :: IO ()
 main = do
