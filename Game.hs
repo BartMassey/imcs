@@ -11,7 +11,6 @@ import Control.Monad
 import Control.Monad.ST
 import System.IO
 import System.Time
-import Data.Bits
 import Text.Printf
 
 import Board
