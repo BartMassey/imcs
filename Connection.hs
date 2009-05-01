@@ -4,17 +4,17 @@
 --- Please see the file COPYING in the source
 --- distribution of this software for license terms.
 
-module Connection(Socket, PortNumber,
-                  masterInit, masterAccept, connectionInit) where
+module Connection(Socket, masterInit, masterAccept, connectionInit)
+where
 
 import Network
 import Network.Socket as NS
 import System.IO
 
-masterInit :: PortNumber -> IO Socket
+masterInit :: Int -> IO Socket
 masterInit port_num = do
   hPutStrLn stderr ("listening for game on port " ++ show port_num)
-  listenOn (PortNumber port_num)
+  listenOn (PortNumber . fromIntegral $  port_num)
 
 masterAccept :: Socket -> IO Handle
 masterAccept listen_socket = do
@@ -24,11 +24,11 @@ masterAccept listen_socket = do
   hSetBuffering handle LineBuffering
   return handle
 
-connectionInit :: PortNumber -> Char -> IO Handle
+connectionInit :: Int -> Char -> IO Handle
 connectionInit port_num side = do
   hPutStrLn stderr ("listening for " ++ [side] ++
                     " on port " ++ show port_num)
-  listen_socket <- listenOn (PortNumber port_num)
+  listen_socket <- listenOn (PortNumber . fromIntegral $ port_num)
   (handle, hostname, _) <- Network.accept listen_socket
   hPutStrLn stderr ("got " ++ [side] ++
                     " host " ++ hostname ++

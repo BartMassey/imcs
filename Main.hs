@@ -11,34 +11,24 @@ import Data.Maybe
 import Control.Monad
 import Control.Monad.ST
 import System.IO
-import Network
+import Network (withSocketsDo)
+
 import System.Console.ParseArgs
 
 import Board
 import State
 import Connection
+import Game
 
-data Option = OptionOffset
-            | OptionPosition
-            | OptionTime
+data Option = OptionPort
               deriving (Ord, Eq, Show)
 
 argd :: [ Arg Option ]
-argd = [ Arg { argIndex = OptionPosition,
-               argName = Just "position",
-               argAbbr = Nothing,
-               argData = argDataOptional "position-file" ArgtypeString,
-               argDesc = "File containing initial position" },
-         Arg { argIndex = OptionTime,
-               argName = Just "time",
-               argAbbr = Just 't',
-               argData = argDataOptional "secs" ArgtypeInt,
-               argDesc = "Seconds per side for 40 moves" },
-         Arg { argIndex = OptionOffset,
-               argName = Nothing,
-               argAbbr = Nothing,
-               argData = argDataDefaulted "offset" ArgtypeInt 0,
-               argDesc = "Port offset" } ]
+argd = [ Arg { argIndex = OptionPort,
+               argName = Just "port",
+               argAbbr = Just 'p',
+               argData = argDataDefaulted "port" ArgtypeInt 3589,
+               argDesc = "Server port" } ]
 
 run_game :: Problem -> CState -> CState -> IO ()
 run_game problem this@(h, t) other = do
@@ -52,25 +42,25 @@ run_game problem this@(h, t) other = do
           then run_game problem' this other
           else run_game problem' other (h, t')
 
-real_main :: IO ()
-real_main = do
-  args <- parseArgsIO ArgsComplete argd
-  let offset = fromJust (getArgInt args OptionOffset)
-  let time = getArgInt args OptionTime
-  mfh <- getArgFile args OptionPosition ReadMode
-  let time' = fmap (1000 *) time
-  handle_w <- connectionInit (3589 + offset) White
-  handle_b <- connectionInit (3590 + offset) Black
-  problem <- case mfh  of
-               Nothing -> return startProblem
-               Just pf -> do
-                 ps <- hGetContents pf
-                 return (readProblem ps)
-  case problemToMove problem of
-    White -> run_game problem (handle_w, time') (handle_b, time')
-    Black -> run_game problem (handle_w, time') (handle_b, time')
+one_game :: Maybe Int -> (Int, Int) -> IO ()
+one_game time (port_w, port_b) = do
+  handle_w <- connectionInit port_w 'W'
+  handle_b <- connectionInit port_b 'B'
+  case problemToMove startProblem of
+    White -> run_game startProblem (handle_w, time) (handle_b, time)
+    Black -> run_game startProblem (handle_w, time) (handle_b, time)
   hClose handle_w
   hClose handle_b
 
+real_main :: Int -> IO ()
+real_main port = do
+  master <- masterInit port
+  forever $ do
+    client <- masterAccept master
+    hClose client
+
 main :: IO ()
-main = withSocketsDo real_main
+main = do
+  args <- parseArgsIO ArgsComplete argd
+  let port = fromJust (getArgInt args OptionPort)
+  withSocketsDo (real_main port)
