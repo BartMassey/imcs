@@ -7,7 +7,7 @@ Internet MiniChess Server
 
 This package is a communications server and referee for
 games of MiniChess (http://wiki.cs.pdx.edu/cs542/mini-chess.html)
-played online.  It currently conforms to the MiniChess 2007
+played online.  It currently conforms to the MiniChess 2009
 rules.
 
 The program is not known to be XBoard compatible, but might
