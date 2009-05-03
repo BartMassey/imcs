@@ -4,22 +4,27 @@
 --- Please see the file COPYING in the source
 --- distribution of this software for license terms.
 
-module Main
-where
+--- Internet MiniChess Server
+---   Play MiniChess with other people or programs
+---   over the Internet.
+
+--- Thanks to Marc Gallagher
+---   http://www.ternarysoftware.com/blogs/2009/02/21/
+---     playing-with-haskell-http-server/
+--- for his nice service example.
 
 import Data.Maybe
 import System.IO
 import Control.Monad
-import Network (withSocketsDo)
+import Network
 import Control.Concurrent
 import Control.Concurrent.MVar
 
 import System.Console.ParseArgs
 
-import Connection
-import Game
+import Log
 import Service
-
+    
 data Option = OptionPort
               deriving (Ord, Eq, Show)
 
@@ -30,32 +35,29 @@ argd = [ Arg { argIndex = OptionPort,
                argData = argDataDefaulted "port" ArgtypeInt 3589,
                argDesc = "Server port" } ]
 
-connection_helper :: Int -> Char -> IO (MVar Handle)
-connection_helper port side =  do
-  m <- newEmptyMVar
-  forkIO $ do
-    handle <- connectionInit port side
-    putMVar m handle
-  return m
+master_init :: Int -> LogIO Socket
+master_init port_num = do
+  logMsg $ "listening for game on port " ++ show port_num
+  liftIO $ listenOn $ PortNumber $ fromIntegral port_num
 
-run_game :: (Int, Int) -> IO ()
-run_game (port_w, port_b) = do
-  m_w <- connection_helper port_w 'W'
-  m_b <- connection_helper port_b 'B'
-  h_w <- takeMVar m_w
-  h_b <- takeMVar m_b
-  doGame (Just 600000) (h_w, h_b)
+master_accept :: Socket -> LogIO Handle
+master_accept listen_socket = do
+  (handle, hostname, client_port) <- liftIO $ Network.accept listen_socket
+  logMsg $ "handling client " ++ hostname ++ ":" ++ show client_port
+  liftIO $ hSetBuffering handle LineBuffering
+  return handle
 
-run_service :: Int -> IO ()
+run_service :: Int -> LogIO ()
 run_service port = do
-  master <- masterInit port
-  forever $ do
-    client <- masterAccept master
-    hClose client
+  state <- liftIO $ newMVar []
+  master <- master_init port
+  forkLogIO $ forever $ do
+    client <- master_accept master
+    doCommands client state
+    liftIO $ hClose client
 
 main :: IO ()
 main = do
   args <- parseArgsIO ArgsComplete argd
   let port = fromJust (getArgInt args OptionPort)
----  withSocketsDo (run_service port)
-  withSocketsDo $ run_game (port, port + 1)
+  withSocketsDo $ withLogDo stdout (run_service port)

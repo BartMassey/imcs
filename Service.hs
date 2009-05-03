@@ -4,13 +4,19 @@
 --- Please see the file COPYING in the source
 --- distribution of this software for license terms.
 
-module Service(doCommands) where
+module Service(GameState(..), doCommands) where
 
-import Data.Maybe
 import Control.Monad
 import System.IO
 import Control.Concurrent
 import Control.Concurrent.MVar
 
-doCommands :: IO ()
-doCommands = return ()
+import Log
+import Game
+
+type PlayerState = Maybe (String, CState)
+data GameState = GameState PlayerState PlayerState
+
+doCommands :: Handle -> MVar [GameState] -> LogIO ()
+doCommands client state = do
+    doGame (stdout, Just 600000) (stdout, Just 600000)
