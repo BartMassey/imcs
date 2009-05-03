@@ -4,13 +4,16 @@
 --- Please see the file COPYING in the source
 --- distribution of this software for license terms.
 
-module Log (LogChan, initLog, logMsg, alsoLogMsg)
+module Log (LogIO, liftIO, withLogDo, logMsg, alsoLogMsg)
 where
 
 import Control.Monad
+import Control.Monad.Reader
 import Control.Concurrent
 import Control.Concurrent.Chan
 import System.IO
+
+type LogIO a = ReaderT (Chan String) IO a
 
 newtype LogChan = LogChan (Chan String)
 
@@ -20,16 +23,18 @@ run_log output log_chan =
       msg <- readChan log_chan
       hPutStrLn output msg
 
-logMsg :: LogChan -> String -> IO ()
-logMsg (LogChan log_chan) = writeChan log_chan
+logMsg :: String -> LogIO ()
+logMsg msg = do
+  log_chan <- ask
+  liftIO $ writeChan log_chan msg
 
-alsoLogMsg :: Handle -> LogChan -> String -> IO ()
-alsoLogMsg primary log_chan msg = do
-    hPutStrLn primary msg
-    logMsg log_chan msg
+alsoLogMsg :: Handle -> String -> LogIO ()
+alsoLogMsg primary msg = do
+    liftIO $ hPutStrLn primary msg
+    logMsg msg
 
-initLog :: IO LogChan
-initLog = do
+withLogDo :: Handle -> LogIO () -> IO ()
+withLogDo handle actions = do
   log_chan <- newChan
-  forkIO $ run_log stdout log_chan
-  return $ LogChan log_chan
+  forkIO $ run_log handle log_chan
+  runReaderT actions log_chan
