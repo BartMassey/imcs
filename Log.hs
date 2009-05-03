@@ -4,7 +4,7 @@
 --- Please see the file COPYING in the source
 --- distribution of this software for license terms.
 
-module Log (LogIO, liftIO, withLogDo, logMsg, alsoLogMsg)
+module Log (LogIO, liftIO, withLogDo, logMsg, alsoLogMsg, forkLogIO)
 where
 
 import Control.Monad
@@ -38,3 +38,8 @@ withLogDo handle actions = do
   log_chan <- newChan
   forkIO $ run_log handle log_chan
   runReaderT actions log_chan
+
+forkLogIO :: LogIO () -> LogIO ()
+forkLogIO actions = do
+  log_chan <- ask
+  liftIO $ runReaderT actions log_chan
