@@ -68,9 +68,7 @@ doCommands (h, client_id) state = do
               let new_game = GameResv my_name (head color) wakeup
               let game_list' = new_game : game_list
               putMVar state game_list'
-              hPutStrLn stderr "offer waiting for wakeup"
             other_h <- liftIO $ readChan wakeup
-            liftIO $ hPutStrLn stderr "offer got wakeup"
             case head color of
               'W' -> do
                 doGame (h, default_time) (other_h, default_time)
