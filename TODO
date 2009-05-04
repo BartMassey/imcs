@@ -1,3 +1,6 @@
 * clock should not start until after first move
-* finish color arbitration stuff
-* add time arbitration stuff
+* finish color arbitration
+* add time arbitration
+* add scoring support
+* add password file support
+* add webpage generation support
