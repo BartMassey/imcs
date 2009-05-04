@@ -40,12 +40,13 @@ master_init port_num = do
   logMsg $ "listening for game on port " ++ show port_num
   liftIO $ listenOn $ PortNumber $ fromIntegral port_num
 
-master_accept :: Socket -> LogIO Handle
+master_accept :: Socket -> LogIO (Handle, String)
 master_accept listen_socket = do
   (handle, hostname, client_port) <- liftIO $ Network.accept listen_socket
-  logMsg $ "handling client " ++ hostname ++ ":" ++ show client_port
+  let client_id = hostname ++ ":" ++ show client_port
+  logMsg $ "handling client " ++ client_id
   liftIO $ hSetBuffering handle LineBuffering
-  return handle
+  return (handle, client_id)
 
 run_service :: Int -> LogIO ()
 run_service port = do
@@ -54,7 +55,6 @@ run_service port = do
   forkLogIO $ forever $ do
     client <- master_accept master
     doCommands client state
-    liftIO $ hClose client
 
 main :: IO ()
 main = do
