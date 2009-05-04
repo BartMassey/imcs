@@ -42,4 +42,5 @@ withLogDo handle actions = do
 forkLogIO :: LogIO () -> LogIO ()
 forkLogIO actions = do
   log_chan <- ask
-  liftIO $ runReaderT actions log_chan
+  _ <- liftIO $ forkIO $ runReaderT actions log_chan
+  return ()
