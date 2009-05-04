@@ -88,9 +88,8 @@ doCommands (h, client_id) state = do
           valid_color "B" = True
           valid_color _ = False
       ["list"] -> liftIO $ do
-        game_list <- takeMVar state
+        game_list <- readMVar state
         mapM_ output_game game_list
-        putMVar state game_list
         where
           output_game (GameResv other_name color _) =
             hPutStrLn h $ " " ++ other_name ++ " " ++ [color]
