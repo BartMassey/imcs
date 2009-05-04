@@ -52,9 +52,9 @@ run_service :: Int -> LogIO ()
 run_service port = do
   state <- liftIO $ newMVar []
   master <- master_init port
-  forkLogIO $ forever $ do
+  forever $ do
     client <- master_accept master
-    doCommands client state
+    forkLogIO $ doCommands client state
 
 main :: IO ()
 main = do
