@@ -1,3 +1,4 @@
+* catch and handle unexpected disconnects
 * clock should not start until after first move
 * finish color arbitration
 * add time arbitration
