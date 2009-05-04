@@ -17,6 +17,9 @@ import Version
 import Log
 import Game
 
+default_time :: Maybe Int
+default_time = Just 300000
+
 data GameState = GameResv String Char (Chan Handle)
 
 while :: IORef Bool -> LogIO () -> LogIO ()
@@ -59,20 +62,22 @@ doCommands (h, client_id) state = do
             logMsg $ "client " ++ client_id ++ " offers game as " ++ color
             wakeup <- liftIO $ newChan
             liftIO $ do
+              writeIORef continue False
               game_list <- takeMVar state
               my_name <- readIORef me
               let new_game = GameResv my_name (head color) wakeup
               let game_list' = new_game : game_list
               putMVar state game_list'
-              writeIORef continue False
+              hPutStrLn stderr "offer waiting for wakeup"
             other_h <- liftIO $ readChan wakeup
+            liftIO $ hPutStrLn stderr "offer got wakeup"
             case head color of
-              'W' -> forkLogIO $ do
-                doGame (h, Nothing) (other_h, Nothing)
+              'W' -> do
+                doGame (h, default_time) (other_h, default_time)
                 liftIO $ hClose h
                 liftIO $ hClose other_h
-              'B' -> forkLogIO $ do
-                doGame (other_h, Nothing) (h, Nothing)
+              'B' -> do
+                doGame (other_h, default_time) (h, default_time)
                 liftIO $ hClose h
                 liftIO $ hClose other_h
             logMsg $ "client " ++ client_id ++ "closes"
