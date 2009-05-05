@@ -4,9 +4,11 @@
 --- Please see the file COPYING in the source
 --- distribution of this software for license terms.
 
-module Log (LogIO, liftIO, withLogDo, logMsg, alsoLogMsg, forkLogIO)
+module Log (LogIO, liftIO, withLogDo, logMsg, alsoLogMsg, forkLogIO, catchLogIO)
 where
 
+import Prelude hiding (catch)
+import Control.Exception
 import Control.Monad
 import Control.Monad.Reader
 import Control.Concurrent
@@ -43,3 +45,9 @@ forkLogIO :: LogIO () -> LogIO ThreadId
 forkLogIO actions = do
   log_chan <- ask
   liftIO $ forkIO $ runReaderT actions log_chan
+
+catchLogIO :: Exception e => LogIO () -> (e -> LogIO ()) -> LogIO ()
+catchLogIO actions handler = do
+  log_chan <- ask
+  liftIO $ catch (runReaderT actions log_chan)
+                 (\e -> runReaderT (handler e) log_chan)
