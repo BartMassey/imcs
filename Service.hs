@@ -98,11 +98,11 @@ doCommands (h, client_id) state = do
             hPutStrLn h $ "no such game"
             putMVar state game_list
           Just (color, wakeup, game_list') ->  do
-            logMsg $ "client " ++ client_id ++ "accepts" ++ name
+            logMsg $ "client " ++ client_id ++ " accepts " ++ name
             liftIO $ do
               writeIORef continue False
-              writeChan wakeup h
               putMVar state game_list'
+              writeChan wakeup h
         where
           find_game game_list = go [] game_list where
             go _ [] = Nothing
