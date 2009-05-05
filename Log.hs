@@ -39,8 +39,7 @@ withLogDo handle actions = do
   forkIO $ run_log handle log_chan
   runReaderT actions log_chan
 
-forkLogIO :: LogIO () -> LogIO ()
+forkLogIO :: LogIO () -> LogIO ThreadId
 forkLogIO actions = do
   log_chan <- ask
-  _ <- liftIO $ forkIO $ runReaderT actions log_chan
-  return ()
+  liftIO $ forkIO $ runReaderT actions log_chan
