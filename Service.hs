@@ -6,6 +6,7 @@
 
 module Service(GameState, doCommands) where
 
+import Control.Exception
 import Control.Monad
 import Data.IORef
 import System.IO
@@ -69,16 +70,26 @@ doCommands (h, client_id) state = do
               let game_list' = new_game : game_list
               putMVar state game_list'
             other_h <- liftIO $ readChan wakeup
-            case head color of
-              'W' -> do
-                doGame (h, default_time) (other_h, default_time)
-                liftIO $ hClose h
-                liftIO $ hClose other_h
-              'B' -> do
-                doGame (other_h, default_time) (h, default_time)
-                liftIO $ hClose h
-                liftIO $ hClose other_h
-            logMsg $ "client " ++ client_id ++ "closes"
+            let run_game = do
+                case head color of
+                  'W' -> do
+                     doGame (h, default_time) (other_h, default_time)
+                     liftIO $ hClose h
+                     liftIO $ hClose other_h
+                  'B' -> do
+                     doGame (other_h, default_time) (h, default_time)
+                     liftIO $ hClose h
+                     liftIO $ hClose other_h
+                logMsg $ "client " ++ client_id ++ " closes"
+            let clean_up e = do
+                logMsg $ "game " ++ client_id ++
+                         " incurs IO error: " ++ show (e :: IOException)
+                liftIO $ do
+                  hPutStrLn h "opponent incurred fatal IO error: exiting"
+                  hClose h
+                  hPutStrLn other_h "opponent incurred fatal IO error: exiting"
+                  hClose other_h
+            catchLogIO run_game clean_up
           False ->
             liftIO $ hPutStrLn h $ "bad color " ++ color
         where
