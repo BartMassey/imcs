@@ -54,7 +54,7 @@ times_fmt this_t other_t =
     time_fmt (Just t) = printf " %02d:%06.3f" mins secs where
         mins = t `div` 60000
         secs = fromIntegral (t - 60000 * mins) / 1000 :: Double
-    time_fmt Nothing = " "
+    time_fmt Nothing = " -"
 
 do_turn :: CState -> CState -> Problem -> LogIO (Maybe (Problem, Maybe Int))
 do_turn (this_h, this_t) (other_h, other_t) problem = do
@@ -110,16 +110,24 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
       return (capture undo, stop, problem')
 
 run_game :: Problem -> CState -> CState -> LogIO ()
-run_game problem this@(h, t) other = do
-  result <- do_turn this other problem
+run_game problem (h, t) other = do
+  let side = problemToMove problem
+  let turn = problemTurn problem
+  let t0 = case (side, turn) of
+             (White, 1) -> Nothing
+             _ -> t
+  result <- do_turn (h, t0) other problem
   case result of
     Nothing -> return ()
     Just (problem', t') -> do
-        let side = problemToMove problem
         let side' = problemToMove problem'
         if side' == side 
-          then run_game problem' this other
-          else run_game problem' other (h, t')
+          then run_game problem' (h, t') other
+          else do
+            let t1 = case (t, t0) of
+                       (Just _, Nothing) -> t
+                       _ -> t'
+            run_game problem' other (h, t1)
 
 doProblem :: Problem -> CState -> CState -> LogIO ()
 doProblem problem w@(h_w, _) b@(h_b, _) = do

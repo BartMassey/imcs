@@ -1,9 +1,9 @@
-* clock should not start until after first move
+* numeric logfiles
+* add password file support
+
+* add webpage generation support
+* add ranking support
 * finish color arbitration
 * add time arbitration
-* add scoring support
-* add password file support
-* add webpage generation support
-
 * better handling of unexpected disconnects
-* better logging
+* better id/alias support
