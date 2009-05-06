@@ -6,3 +6,4 @@
 * add webpage generation support
 
 * better handling of unexpected disconnects
+* better logging
