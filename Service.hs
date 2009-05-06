@@ -7,11 +7,13 @@
 module Service(ServiceState, initServiceState, doCommands) where
 
 import Prelude hiding (catch)
+
 import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Concurrent.Chan
 import Control.Exception
 import Control.Monad
+import Data.Char
 import Data.IORef
 import System.IO
 import System.Time
@@ -53,6 +55,15 @@ initServiceState = do
       write_game_id 1
       return 1
 
+parse_int :: String -> Maybe Int
+parse_int "" = Nothing
+parse_int s
+    | all isDigit s = Just (go 0 s)
+    | otherwise = Nothing
+    where
+      go cur [] = cur
+      go cur (c : cs) = go (10 * cur + digitToInt c) cs
+
 while :: IORef Bool -> LogIO () -> LogIO ()
 while b a = do
   cond <- liftIO $ readIORef b
@@ -76,9 +87,9 @@ doCommands (h, client_id) state = do
           " help: this help",
           " quit: quit imcs",
           " me <name>: set my alias (default hostname:port)",
-          " list: list available games",
+          " list: list available games (<id> <opponent-name> <opponent-color>)",
           " offer <color>: offer a game as W or B",
-          " accept <alias>: accept a game with an opponent" ]
+          " accept <id>: accept a game with an opponent" ]
       ["quit"] -> do
         logMsg $ "client " ++ client_id ++ " quits"
         liftIO $ do
@@ -144,23 +155,28 @@ doCommands (h, client_id) state = do
         where
           output_game (GameResv game_id _ other_name color _) =
             hPutStrLn h $ show game_id ++ " " ++ other_name ++ " " ++ [color]
-      ["accept", name] -> do
+      ["accept", id] -> do
         ServiceState game_id game_list <- liftIO $ takeMVar state
-        case find_game game_list of
+        case parse_int id of
           Nothing -> liftIO $ do
-            hPutStrLn h $ "no such game"
+            hPutStrLn h "bad game id"
             putMVar state $ ServiceState game_id game_list
-          Just (game_id', color, wakeup, game_list') ->  do
-            logMsg $ "client " ++ client_id ++ " accepts " ++ show game_id'
-            liftIO $ do
-              writeIORef continue False
-              putMVar state $ ServiceState game_id game_list'
-              writeChan wakeup (client_id, h)
-        where
-          find_game game_list = go [] game_list where
-            go _ [] = Nothing
-            go first this@(GameResv game_id _ other_name color wakeup : rest)
-               | other_name == name =
-                   Just (game_id, color, wakeup, first ++ rest)
-               | otherwise = go (first ++ this) rest
+          Just ask_id -> 
+            case find_game game_list of
+              Nothing -> liftIO $ do
+                hPutStrLn h $ "no such game"
+                putMVar state $ ServiceState game_id game_list
+              Just (game_id', color, wakeup, game_list') ->  do
+                logMsg $ "client " ++ client_id ++ " accepts " ++ show game_id'
+                liftIO $ do
+                  writeIORef continue False
+                  putMVar state $ ServiceState game_id game_list'
+                  writeChan wakeup (client_id, h)
+            where
+              find_game game_list = go [] game_list where
+                go _ [] = Nothing
+                go first this@(GameResv game_id _ _ color wakeup : rest)
+                   | game_id == ask_id =
+                       Just (game_id, color, wakeup, first ++ rest)
+                   | otherwise = go (first ++ this) rest
       _ -> liftIO $ hPutStrLn h $ "unknown command"

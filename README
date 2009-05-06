@@ -28,7 +28,8 @@ prompting with the game state.
 Invocation:
 
   There should be a subdirectory called log/ of the
-  invocation directory in which imcs can write game logs.
+  invocation directory in which imcs can write game state
+  and logs.
 
   The --port <n> argument sets the server listening port;
   the current default port is, for no very good reason,
