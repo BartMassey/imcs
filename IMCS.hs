@@ -50,7 +50,8 @@ master_accept listen_socket = do
 
 run_service :: Int -> LogIO ()
 run_service port = do
-  state <- liftIO $ newMVar []
+  state0 <- liftIO $ initServiceState
+  state <- liftIO $ newMVar state0
   master <- master_init port
   forever $ do
     client <- master_accept master
