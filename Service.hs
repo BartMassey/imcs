@@ -21,7 +21,7 @@ import Game
 default_time :: Maybe Int
 default_time = Just 300000
 
-data GameState = GameResv String Char (Chan Handle)
+data GameState = GameResv String String Char (Chan (String, Handle))
 
 while :: IORef Bool -> LogIO () -> LogIO ()
 while b a = do
@@ -66,20 +66,27 @@ doCommands (h, client_id) state = do
               writeIORef continue False
               game_list <- takeMVar state
               my_name <- readIORef me
-              let new_game = GameResv my_name (head color) wakeup
+              let new_game = GameResv client_id my_name (head color) wakeup
               let game_list' = new_game : game_list
               putMVar state game_list'
-            other_h <- liftIO $ readChan wakeup
+            (other_id, other_h) <- liftIO $ readChan wakeup
             let run_game = do
-                case head color of
-                  'W' -> do
-                     doGame (h, default_time) (other_h, default_time)
-                     liftIO $ hClose h
-                     liftIO $ hClose other_h
-                  'B' -> do
-                     doGame (other_h, default_time) (h, default_time)
-                     liftIO $ hClose h
-                     liftIO $ hClose other_h
+                logMsg $ "game " ++ client_id ++
+                         " (" ++ color ++ ") vs " ++
+                         other_id ++ " begins"
+                let (p1, p2) = case head color of
+                                 'W' -> ((h, default_time),
+                                         (other_h, default_time))
+                                 'B' -> ((other_h, default_time),
+                                         (h, default_time))
+                let game_id = client_id ++ "@" ++ color ++ "-" ++ other_id
+                let path = "log/" ++ game_id
+                game_log <- liftIO $ openFile path WriteMode
+                liftIO $ withLogDo game_log $ do
+                  logMsg game_id
+                  doGame p1 p2
+                liftIO $ hClose h
+                liftIO $ hClose other_h
                 logMsg $ "client " ++ client_id ++ " closes"
             let clean_up e = do
                 logMsg $ "game " ++ client_id ++
@@ -100,7 +107,7 @@ doCommands (h, client_id) state = do
         game_list <- readMVar state
         mapM_ output_game game_list
         where
-          output_game (GameResv other_name color _) =
+          output_game (GameResv _ other_name color _) =
             hPutStrLn h $ " " ++ other_name ++ " " ++ [color]
       ["accept", name] -> do
         game_list <- liftIO $ takeMVar state
@@ -108,16 +115,17 @@ doCommands (h, client_id) state = do
           Nothing -> liftIO $ do
             hPutStrLn h $ "no such game"
             putMVar state game_list
-          Just (color, wakeup, game_list') ->  do
-            logMsg $ "client " ++ client_id ++ " accepts " ++ name
+          Just (other_id, color, wakeup, game_list') ->  do
+            logMsg $ "client " ++ client_id ++ " accepts " ++ other_id
             liftIO $ do
               writeIORef continue False
               putMVar state game_list'
-              writeChan wakeup h
+              writeChan wakeup (client_id, h)
         where
           find_game game_list = go [] game_list where
             go _ [] = Nothing
-            go first this@(GameResv other_name color wakeup : rest)
-               | other_name == name = Just (color, wakeup, first ++ rest)
+            go first this@(GameResv other_id other_name color wakeup : rest)
+               | other_name == name =
+                   Just (other_id, color, wakeup, first ++ rest)
                | otherwise = go (first ++ this) rest
       _ -> liftIO $ hPutStrLn h $ "unknown command"
