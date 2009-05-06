@@ -14,16 +14,29 @@ import System.Time
 import Text.Printf
 
 import Log
-import Readline
 import Board
 import State
 
 type CState = (Handle, Maybe Int)
 
-read_move :: Handle -> IO (Maybe Move)
-read_move handle = do
-  move_str <- hReadline handle
-  return (readMove move_str)
+data MoveResult = Resign | InvalidMove | IllegalMove | GoodMove Move
+
+read_move :: Problem -> Handle -> IO MoveResult
+read_move problem handle = do
+  move_str <- hGetLine handle
+  case unwords $ words $ move_str of
+    "resign" -> return Resign
+    move_str' ->
+        case readMove move_str' of
+          Nothing -> return InvalidMove
+          Just mov -> case runST check_move of
+                        True -> return $ GoodMove mov
+                        False -> return $ IllegalMove
+                      where
+                        check_move = do
+                          state <- animateProblem problem
+                          candidates <- moves state
+                          return (elem mov candidates)
 
 update_time :: Maybe Int -> Int -> Maybe Int
 update_time Nothing _ = Nothing
@@ -49,33 +62,42 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
   alsoLogMsg this_h (showProblem problem)
   alsoLogMsg this_h (times_fmt this_t other_t)
   then_msecs <- liftIO $ get_clock_time_ms
-  mov <- liftIO $ read_move this_h 
+  movt <- liftIO $ read_move problem this_h 
   now_msecs <- liftIO $ get_clock_time_ms
   let elapsed = fromIntegral (now_msecs - then_msecs)
   let time' = update_time this_t elapsed
   case time' of
     Just 0 -> do
       let loser = (showSide . problemToMove) problem
-      logMsg $ [loser] ++ " loses on time"
+      alsoLogMsg other_h $ [loser] ++ " loses on time"
       return Nothing
     _ -> do
-      let ok = runST (check_move mov)
-      case ok of
-        False -> do
+      case movt of
+        Resign -> do
+          let loser = (showSide . problemToMove) problem
+          alsoLogMsg other_h $ [loser] ++ " resigns"
+          return Nothing
+        IllegalMove -> do
           alsoLogMsg this_h ("? illegal move")
           return (Just (problem, time'))
-        True -> do
-          let (captured, stop, problem') =
-                runST (execute_move (fromJust mov))
+        InvalidMove -> do
+          alsoLogMsg this_h ("? invalid move")
+          return (Just (problem, time'))
+        GoodMove mov -> do
+          let (captured, stop, problem') = runST (execute_move mov)
           case stop of
             True -> do
               case captured of
-                'K' -> logMsg "B wins"
-                'k' -> logMsg "W wins"
-                _   -> logMsg "draw"
+                'K' -> report "B wins"
+                'k' -> report "W wins"
+                _   -> report "draw"
               return Nothing
+              where
+                report msg = do
+                  alsoLogMsg this_h msg
+                  liftIO $ hPutStrLn other_h msg
             False -> do
-              let move_string = showMove (fromJust mov)
+              let move_string = showMove mov
               logMsg move_string
               liftIO $ hPutStrLn other_h $ "! " ++ move_string
               return (Just (problem', time'))
@@ -86,11 +108,6 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
       stop <- gameOver state' undo
       problem' <- snapshotState state'
       return (capture undo, stop, problem')
-    check_move (Just mov) = do
-      state <- animateProblem problem
-      candidates <- moves state
-      return (elem mov candidates)
-    check_move Nothing = return False
 
 run_game :: Problem -> CState -> CState -> LogIO ()
 run_game problem this@(h, t) other = do
