@@ -24,6 +24,7 @@ run_log output log_chan =
     forever $ do
       msg <- readChan log_chan
       hPutStrLn output msg
+      hFlush output
 
 logMsg :: String -> LogIO ()
 logMsg msg = do
@@ -38,8 +39,10 @@ alsoLogMsg primary msg = do
 withLogDo :: Handle -> LogIO () -> IO ()
 withLogDo handle actions = do
   log_chan <- newChan
-  forkIO $ run_log handle log_chan
+  tid <- forkIO $ run_log handle log_chan
   runReaderT actions log_chan
+  hClose handle
+  killThread tid
 
 forkLogIO :: LogIO () -> LogIO ThreadId
 forkLogIO actions = do
