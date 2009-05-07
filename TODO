@@ -1,8 +1,10 @@
 * add password file support
 
+* add locking against other instances
 * add webpage generation support
 * add ranking support
 * finish color arbitration
 * add time arbitration
 * better handling of unexpected disconnects
 * better id/alias support
+* canonize protocol
