@@ -8,7 +8,7 @@ module Service (
   ServiceState,
   initServiceDir,
   initServiceState,
-  doCommands ) where
+  doCommands) where
 
 import Prelude hiding (catch)
 
@@ -98,7 +98,6 @@ read_pwf :: IO [PWFEntry]
 read_pwf = do
   h <- openFile pwf_path ReadMode
   s <- hGetContents h
-  hClose h
   return $ map (make_pwfe . words) $ lines s
   where
     make_pwfe [name, password] =
@@ -136,6 +135,10 @@ while b a = do
     False -> return ()
     True -> a >> while b a
 
+pw_lookup :: ServiceState -> String -> Maybe String
+pw_lookup ss name = lookup name pwf where
+    pwf = map (\(PWFEntry n p) -> (n, p)) $ service_state_pwf ss
+
 doCommands :: (Handle, String) -> MVar ServiceState -> LogIO ()
 doCommands (h, client_id) state = do
   liftIO $ hPutStrLn h $ "imcs " ++ version
@@ -151,7 +154,9 @@ doCommands (h, client_id) state = do
           " imcs " ++ version,
           " help: this help",
           " quit: quit imcs",
-          " me <name>: set my alias (default hostname:port)",
+          " me <name> <password>: log in",
+          " register <name> <password>: register a new name and log in",
+          " password <password>: change password",
           " list: list available games (<id> <opponent-name> <opponent-color>)",
           " offer <color>: offer a game as W or B",
           " accept <id>: accept a game with an opponent" ]
@@ -160,9 +165,61 @@ doCommands (h, client_id) state = do
         liftIO $ do
           writeIORef continue False
           hClose h
-      ["me", name] -> do
-        logMsg $ "client " ++ client_id ++ " aka " ++ name
-        liftIO $ writeIORef me $ Just name
+      ["me", name, password] -> do
+        ss <- liftIO $ readMVar state
+        case pw_lookup ss name of
+          Nothing ->
+              liftIO $ hPutStrLn h $ "no such username: " ++
+                                     "please use register command"
+          Just password' ->
+              if password /= password'
+              then
+                liftIO $ hPutStrLn h "wrong password"
+              else do
+                logMsg $ "client " ++ client_id ++ " aka " ++ name
+                liftIO $ writeIORef me $ Just name
+      ["register", name, password] -> do
+         ss <- liftIO $ takeMVar state
+         case pw_lookup ss name of
+           Just _ -> liftIO $ do
+             hPutStrLn h $ "username already exists: " ++
+                           "please use password command to change"
+             putMVar state ss
+           Nothing -> do
+             logMsg $ "registering client " ++ client_id ++
+                      " as user " ++ name
+             let ServiceState game_id game_list pwf = ss
+             let pwfe = PWFEntry name password
+             let pwf' = pwf ++ [pwfe]
+             let ss' = ServiceState game_id game_list pwf'
+             liftIO $ do
+               write_pwf pwf'
+               putMVar state ss'
+               writeIORef me $ Just name
+      ["password", password] -> do
+        maybe_my_name <- liftIO $ readIORef me
+        case maybe_my_name of
+          Nothing ->
+            liftIO $ hPutStrLn h "please use the me command first"
+          Just my_name -> do
+            ss <- liftIO $ takeMVar state
+            case pw_lookup ss my_name of
+              Nothing -> do
+                liftIO $ hPutStrLn h "you do not exist: go away"
+                logMsg $ "client " ++ client_id ++ " name " ++
+                         my_name ++ "not in password file"
+                liftIO $ putMVar state ss
+              Just _ -> do
+                logMsg $ "changing password for client " ++ client_id ++
+                         " user " ++ my_name
+                let ServiceState game_id game_list pwf = ss
+                let newpass e@(PWFEntry n _)
+                     | n == my_name = PWFEntry n password
+                     | otherwise = e
+                let pwf' = map newpass pwf
+                let ss' = ServiceState game_id game_list pwf'
+                liftIO $ write_pwf pwf'
+                liftIO $ putMVar state ss'
       ["list"] -> liftIO $ do
         ServiceState _ game_list _ <- readMVar state
         mapM_ output_game game_list
