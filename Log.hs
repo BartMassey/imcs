@@ -8,11 +8,11 @@ module Log (LogIO, liftIO, withLogDo, logMsg, alsoLogMsg, forkLogIO, catchLogIO)
 where
 
 import Prelude hiding (catch)
-import Control.Exception
-import Control.Monad.Reader
 import Control.Concurrent
 import Control.Concurrent.Chan
+import Control.Monad.Reader
 import System.IO
+import System.IO.Error
 
 newtype LogChan = LogChan (Chan String)
 
@@ -48,7 +48,7 @@ forkLogIO actions = do
   log_chan <- ask
   liftIO $ forkIO $ runReaderT actions log_chan
 
-catchLogIO :: Exception e => LogIO () -> (e -> LogIO ()) -> LogIO ()
+catchLogIO :: LogIO () -> (IOError -> LogIO ()) -> LogIO ()
 catchLogIO actions handler = do
   log_chan <- ask
   liftIO $ catch (runReaderT actions log_chan)

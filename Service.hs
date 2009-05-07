@@ -10,12 +10,12 @@ import Prelude hiding (catch)
 
 import Control.Concurrent.Chan
 import Control.Concurrent.MVar
-import Control.Exception
 import Control.Monad
 import Data.Char
 import Data.IORef
 import System.FilePath
 import System.IO
+import System.IO.Error
 import System.Time
 
 import Version
@@ -63,7 +63,6 @@ initServiceState = do
       l <- hGetLine idh
       hClose idh
       return $ read l :: IO Int
-    cleanup :: IOException -> IO Int
     cleanup _ = do
       write_game_id 1
       return 1
@@ -159,7 +158,7 @@ doCommands (h, client_id) state = do
                 logMsg $ "client " ++ client_id ++ " closes"
             let clean_up e = do
                 logMsg $ "game " ++ client_id ++
-                         " incurs IO error: " ++ show (e :: IOException)
+                         " incurs IO error: " ++ show e
                 liftIO $ do
                   hPutStrLn h "opponent incurred fatal IO error: exiting"
                   hClose h
