@@ -4,7 +4,11 @@
 --- Please see the file COPYING in the source
 --- distribution of this software for license terms.
 
-module Service(ServiceState, initServiceState, doCommands) where
+module Service (
+  ServiceState,
+  initServiceDir,
+  initServiceState,
+  doCommands ) where
 
 import Prelude hiding (catch)
 
@@ -17,6 +21,7 @@ import System.FilePath
 import System.IO
 import System.IO.Error
 import System.Posix.Files
+import System.Posix.Directory
 import System.Time
 
 import Version
@@ -26,17 +31,20 @@ import Game
 state_path :: FilePath
 state_path = "imcsd"
 
+private_path :: FilePath
+private_path = state_path </> "private"
+
 game_id_path :: FilePath
-game_id_path = state_path </> "GAMEID"
+game_id_path = private_path </> "GAMEID"
+
+pwf_path :: FilePath
+pwf_path = private_path </> "passwd"
+
+pwf_tmp_path :: FilePath
+pwf_tmp_path = private_path </> "passwd.tmp"
 
 log_path :: FilePath
 log_path = state_path </> "log"
-
-pwf_path :: FilePath
-pwf_path = state_path </> "passwd"
-
-pwf_tmp_path :: FilePath
-pwf_tmp_path = state_path </> "passwd.tmp"
 
 default_time :: Maybe Int
 default_time = Just 300000
@@ -61,6 +69,14 @@ data ServiceState = ServiceState {
       service_state_game_id :: Int,
       service_state_game_list :: [GamePost],
       service_state_pwf :: [PWFEntry]}
+
+initServiceDir :: IO ()
+initServiceDir = do
+  createDirectory state_path 0o755
+  createDirectory private_path 0o700
+  createDirectory log_path 0o755
+  h <- openFile pwf_path AppendMode
+  hClose h
 
 write_game_id :: Int -> IO ()
 write_game_id game_id = do

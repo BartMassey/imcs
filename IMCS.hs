@@ -13,11 +13,11 @@
 ---     playing-with-haskell-http-server/
 --- for his nice service example.
 
-import Data.Maybe
-import System.IO
-import Control.Monad
-import Network
 import Control.Concurrent.MVar
+import Control.Monad
+import Data.Maybe
+import Network
+import System.IO
 
 import System.Console.ParseArgs
 
@@ -25,6 +25,7 @@ import Log
 import Service
     
 data Option = OptionPort
+            | OptionInit
               deriving (Ord, Eq, Show)
 
 argd :: [ Arg Option ]
@@ -32,7 +33,12 @@ argd = [ Arg { argIndex = OptionPort,
                argName = Just "port",
                argAbbr = Just 'p',
                argData = argDataDefaulted "port" ArgtypeInt 3589,
-               argDesc = "Server port" } ]
+               argDesc = "Server port" },
+         Arg { argIndex = OptionInit,
+               argName = Just "init",
+               argAbbr = Nothing,
+               argData = Nothing,
+               argDesc = "Initialize server directories, then exit" } ]
 
 master_init :: Int -> LogIO Socket
 master_init port_num = do
@@ -59,5 +65,9 @@ run_service port = do
 main :: IO ()
 main = do
   a <- parseArgsIO ArgsComplete argd
-  let port = fromJust (getArgInt a OptionPort)
-  withSocketsDo $ withLogDo stdout (run_service port)
+  case gotArg a OptionInit of
+     True ->
+       initServiceDir
+     False -> do
+       let port = fromJust (getArgInt a OptionPort)
+       withSocketsDo $ withLogDo stdout (run_service port)

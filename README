@@ -31,7 +31,10 @@ Invocation:
   invocation directory in which imcs can write game state
   and logs.  It should contain a subdirectory called log/
   for writing log files, and should contain a
-  validly-formatted password file.
+  validly-formatted password file.  You can get all this set
+  up by running imcs with the --init flag.  It *should* be
+  harmless to run this on an already-set-up directory, but
+  it's probably a better idea not to.
 
   The --port <n> argument sets the server listening port;
   the current default port is, for no very good reason,
