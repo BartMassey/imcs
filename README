@@ -27,9 +27,11 @@ prompting with the game state.
 
 Invocation:
 
-  There should be a subdirectory called log/ of the
+  There should be a subdirectory called imcsd/ of the
   invocation directory in which imcs can write game state
-  and logs.
+  and logs.  It should contain a subdirectory called log/
+  for writing log files, and should contain a
+  validly-formatted password file.
 
   The --port <n> argument sets the server listening port;
   the current default port is, for no very good reason,

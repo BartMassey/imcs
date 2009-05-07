@@ -16,17 +16,27 @@ import Data.IORef
 import System.FilePath
 import System.IO
 import System.IO.Error
+import System.Posix.Files
 import System.Time
 
 import Version
 import Log
 import Game
 
-log_path :: FilePath
-log_path = "log"
+state_path :: FilePath
+state_path = "imcsd"
 
 game_id_path :: FilePath
-game_id_path = log_path </> "GAMEID"
+game_id_path = state_path </> "GAMEID"
+
+log_path :: FilePath
+log_path = state_path </> "log"
+
+pwf_path :: FilePath
+pwf_path = state_path </> "passwd"
+
+pwf_tmp_path :: FilePath
+pwf_tmp_path = state_path </> "passwd.tmp"
 
 default_time :: Maybe Int
 default_time = Just 300000
@@ -43,9 +53,14 @@ data GamePost = GameResv {
       game_resv_side :: Char,
       game_resv_wakeup :: Chan Wakeup }
 
+data PWFEntry = PWFEntry {
+      pwf_entry_name :: String,
+      pwf_entry_password :: String }
+
 data ServiceState = ServiceState {
       service_state_game_id :: Int,
-      service_state_game_list :: [GamePost] }
+      service_state_game_list :: [GamePost],
+      service_state_pwf :: [PWFEntry]}
 
 write_game_id :: Int -> IO ()
 write_game_id game_id = do
@@ -53,17 +68,42 @@ write_game_id game_id = do
   hPrint idh game_id
   hClose idh
 
+write_pwf :: [PWFEntry] -> IO ()
+write_pwf pwf = do
+  h <- openFile pwf_tmp_path WriteMode
+  let write_pwfe (PWFEntry name password) =
+        hPutStrLn h $ name ++ " " ++ password
+  mapM_ write_pwfe pwf
+  hClose h
+  removeLink pwf_path
+  rename pwf_tmp_path pwf_path
+
+read_pwf :: IO [PWFEntry]
+read_pwf = do
+  h <- openFile pwf_path ReadMode
+  s <- hGetContents h
+  hClose h
+  return $ map (make_pwfe . words) $ lines s
+  where
+    make_pwfe [name, password] =
+        PWFEntry name password
+    make_pwfe _ = error "bad password file format: exiting"
+
 initServiceState :: IO ServiceState
 initServiceState = do
-  next_game_id <- catch do_game_id cleanup
-  return $ ServiceState next_game_id []
+  pwf <- read_pwf
+  next_game_id <- catch do_game_id new_game_id
+  return $ ServiceState {
+    service_state_game_id = next_game_id,
+    service_state_game_list = [],
+    service_state_pwf = pwf }
   where
     do_game_id = do
       idh <- openFile game_id_path ReadMode
       l <- hGetLine idh
       hClose idh
       return $ read l :: IO Int
-    cleanup _ = do
+    new_game_id _ = do
       write_game_id 1
       return 1
 
@@ -108,7 +148,7 @@ doCommands (h, client_id) state = do
         logMsg $ "client " ++ client_id ++ " aka " ++ name
         liftIO $ writeIORef me $ Just name
       ["list"] -> liftIO $ do
-        ServiceState _ game_list <- readMVar state
+        ServiceState _ game_list _ <- readMVar state
         mapM_ output_game game_list
         where
           output_game (GameResv game_id other_name _ color _) =
@@ -124,11 +164,11 @@ doCommands (h, client_id) state = do
             logMsg $ "client " ++ client_id ++ " offers game as " ++ color
             wakeup <- liftIO $ newChan
             liftIO $ writeIORef continue False
-            ServiceState game_id game_list <- liftIO $ takeMVar state
+            ServiceState game_id game_list pwf <- liftIO $ takeMVar state
             let new_game =
                     GameResv game_id my_name client_id (head color) wakeup
             let service_state' =
-                    ServiceState (game_id + 1) (game_list ++ [new_game])
+                    ServiceState (game_id + 1) (game_list ++ [new_game]) pwf
             liftIO $ write_game_id (game_id + 1)
             liftIO $ putMVar state service_state'
             Wakeup other_name other_id other_h
@@ -177,17 +217,17 @@ doCommands (h, client_id) state = do
           (Nothing, _) ->
             liftIO $ hPutStrLn h "bad game id"
           (Just ask_id, Just my_name) -> do
-            ServiceState game_id game_list <- liftIO $ takeMVar state
+            ServiceState game_id game_list pwf <- liftIO $ takeMVar state
             case find_game game_list of
               Nothing -> liftIO $ do
                 hPutStrLn h $ "no such game"
-                putMVar state $ ServiceState game_id game_list
+                putMVar state $ ServiceState game_id game_list pwf
               Just (other_name, wakeup, game_list') ->  do
                 logMsg $ "client " ++ client_id ++
                          " accepts " ++ show other_name
                 liftIO $ do
                   writeIORef continue False
-                  putMVar state $ ServiceState game_id game_list'
+                  putMVar state $ ServiceState game_id game_list' pwf
                   writeChan wakeup $ Wakeup my_name client_id h
             where
               find_game game_list = go [] game_list where
