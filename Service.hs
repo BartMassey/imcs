@@ -8,12 +8,13 @@ module Service(ServiceState, initServiceState, doCommands) where
 
 import Prelude hiding (catch)
 
-import Control.Concurrent.MVar
 import Control.Concurrent.Chan
+import Control.Concurrent.MVar
 import Control.Exception
 import Control.Monad
 import Data.Char
 import Data.IORef
+import System.FilePath
 import System.IO
 import System.Time
 
@@ -21,11 +22,11 @@ import Version
 import Log
 import Game
 
-log_path :: String
+log_path :: FilePath
 log_path = "log"
 
-game_id_path :: String
-game_id_path = log_path ++ "/GAMEID"
+game_id_path :: FilePath
+game_id_path = log_path </> "GAMEID"
 
 default_time :: Maybe Int
 default_time = Just 300000
@@ -145,7 +146,7 @@ doCommands (h, client_id) state = do
                                  'B' -> ((other_h, default_time),
                                          (h, default_time))
                                  _   -> error "internal error: bad color"
-                let path = log_path ++ "/" ++ show game_id
+                let path = log_path </> show game_id
                 game_log <- liftIO $ openFile path WriteMode
                 liftIO $ withLogDo game_log $ do
                   time <- liftIO $ getClockTime
