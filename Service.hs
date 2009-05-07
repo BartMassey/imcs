@@ -168,7 +168,7 @@ doCommands (h, client_id) state = do
         ServiceState _ game_list <- readMVar state
         mapM_ output_game game_list
         where
-          output_game (GameResv _ game_id other_name color _) =
+          output_game (GameResv game_id other_name _ color _) =
             hPutStrLn h $ show game_id ++ " " ++ other_name ++ " " ++ [color]
       ["accept", id] -> do
         ServiceState game_id game_list <- liftIO $ takeMVar state
@@ -192,8 +192,8 @@ doCommands (h, client_id) state = do
             where
               find_game game_list = go [] game_list where
                 go _ [] = Nothing
-                go first this@(GameResv other_name _ _ color wakeup : rest)
-                   | game_id == ask_id =
+                go first this@(GameResv game_id' other_name _ color wakeup : rest)
+                   | game_id' == ask_id =
                        Just (other_name, color, wakeup, first ++ rest)
                    | otherwise = go (first ++ this) rest
       _ -> liftIO $ hPutStrLn h $ "unknown command"
