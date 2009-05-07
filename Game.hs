@@ -112,8 +112,8 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
 run_game :: Problem -> CState -> CState -> LogIO ()
 run_game problem (h, t) other = do
   let side = problemToMove problem
-  let turn = problemTurn problem
-  let t0 = case (side, turn) of
+  let trn = problemTurn problem
+  let t0 = case (side, trn) of
              (White, 1) -> Nothing
              _ -> t
   result <- do_turn (h, t0) other problem
@@ -134,6 +134,7 @@ doProblem problem w@(h_w, _) b@(h_b, _) = do
   case problemToMove problem of
     White -> run_game problem w b
     Black -> run_game problem b w
+    _ -> error "internal error: run_game with no color"
   liftIO $ hClose h_w
   liftIO $ hClose h_b
 

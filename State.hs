@@ -25,6 +25,7 @@ data Side = White | Black | None deriving Eq
 opponent :: Side -> Side
 opponent White = Black
 opponent Black = White
+opponent _ = error "internal error: opponent of None"
 
 data State s = State { toMove :: Side,
                        turn :: Int,
@@ -41,15 +42,16 @@ showSide _ = '?'
 
 readProblem :: String -> Problem
 readProblem desc =
-    let (info : board) = lines desc
+    let (info : bord) = lines desc
         [n, [side]] = words info in
     Problem { problemToMove = readSide side,
               problemTurn = read n,
-              position = readPosition (unlines board) }
+              position = readPosition (unlines bord) }
 
 readSide :: Char -> Side
 readSide 'W' = White
 readSide 'B' = Black
+readSide _ = error "internal error: bad side"
 
 showProblem :: Problem -> String
 showProblem (Problem { problemToMove = side,
@@ -103,15 +105,31 @@ raytrace rayfn clipfn brd side square =
                       then return []
                       else return [s]
 
---- XXX I'm too lazy to explicitly type these
+type Tracer s = Board s -> Side -> Coord -> ST s [Coord]
+
+trace_up :: Tracer s
 trace_up = raytrace dirnUp (\(_, r) -> r <= 6)
-trace_right = raytrace dirnRight (\(c, _) -> c <= 'e')      
+
+trace_right :: Tracer s
+trace_right = raytrace dirnRight (\(c, _) -> c <= 'e')
+
+trace_down :: Tracer s
 trace_down = raytrace dirnDown (\(_, r) -> r >= 1)
+
+trace_left :: Tracer s
 trace_left = raytrace dirnLeft (\(c, _) -> c >= 'a')
+
+trace_ul :: Tracer s
 trace_ul = raytrace dirnUL (\(c, r) -> c >= 'a' && r <= 6)
+
+trace_ur :: Tracer s
 trace_ur = raytrace dirnUR (\(c, r) -> c <= 'e' && r <= 6)
+
+trace_dr :: Tracer s
 trace_dr = raytrace dirnDR (\(c, r) -> c <= 'e' && r >= 1)
-trace_dl = raytrace dirnDL (\(c, r) -> c >= 'a' && r >= 1)      
+
+trace_dl :: Tracer s
+trace_dl = raytrace dirnDL (\(c, r) -> c >= 'a' && r >= 1)
 
 jump :: (Coord -> Coord)
      -> (Coord -> Bool)
@@ -129,24 +147,58 @@ jump jumpfn clipfn brd side square = do
               else return []
      else return []
 
---- XXX I'm too lazy to explicitly type these
+
+type Jumper s = Board s -> Side -> Coord -> ST s [Coord]
+
+jump_up :: Jumper s
 jump_up = jump dirnUp (\(_, r) -> r <= 6)
+
+jump_right :: Jumper s
 jump_right = jump dirnRight (\(c, _) -> c <= 'e')
+
+jump_down :: Jumper s
 jump_down = jump dirnDown (\(_, r) -> r >= 1)
+
+jump_left :: Jumper s
 jump_left = jump dirnLeft (\(c, _) -> c >= 'a')
+
+jump_ul :: Jumper s
 jump_ul = jump dirnUL (\(c, r) -> c >= 'a' && r <= 6)
+
+jump_ur :: Jumper s
 jump_ur = jump dirnUR (\(c, r) -> c <= 'e' && r <= 6)
+
+jump_dr :: Jumper s
 jump_dr = jump dirnDR (\(c, r) -> c <= 'e' && r >= 1)
+
+jump_dl :: Jumper s
 jump_dl = jump dirnDL (\(c, r) -> c >= 'a' && r >= 1)
 
+
+jump_uul :: Jumper s
 jump_uul = jump (dirnUp . dirnUL) (\(c, r) -> c >= 'a' && r <= 6)
+
+jump_lul :: Jumper s
 jump_lul = jump (dirnLeft . dirnUL) (\(c, r) -> c >= 'a' && r <= 6)
+
+jump_uur :: Jumper s
 jump_uur = jump (dirnUp . dirnUR) (\(c, r) -> c <= 'e' && r <= 6)
+
+jump_rur :: Jumper s
 jump_rur = jump (dirnRight . dirnUR) (\(c, r) -> c <= 'e' && r <= 6)
+
+jump_ddr :: Jumper s
 jump_ddr = jump (dirnDown . dirnDR) (\(c, r) -> c <= 'e' && r >= 1)
+
+jump_rdr :: Jumper s
 jump_rdr = jump (dirnRight . dirnDR) (\(c, r) -> c <= 'e' && r >= 1)
-jump_ddl = jump (dirnDown . dirnDL) (\(c, r) -> c >= 'a' && r >= 1)      
-jump_ldl = jump (dirnLeft . dirnDL) (\(c, r) -> c >= 'a' && r >= 1)      
+
+jump_ddl :: Jumper s
+jump_ddl = jump (dirnDown . dirnDL) (\(c, r) -> c >= 'a' && r >= 1)
+
+jump_ldl :: Jumper s
+jump_ldl = jump (dirnLeft . dirnDL) (\(c, r) -> c >= 'a' && r >= 1)
+
 
 find_moves :: Board s -> Side -> Coord -> Char -> ST s [Move]
 find_moves brd side square 'k' = do
@@ -175,7 +227,7 @@ find_moves brd side square@(c, r) 'p' = do
                    White -> r + 1
                    Black -> r - 1
                    _ -> error "internal error: next_rank non-side"
-    capturable pr s@(c', r') = do
+    capturable pr s@(c', _) = do
       if pr c'
          then do
                p <- getBoardSquare brd s
@@ -209,8 +261,8 @@ find_moves brd side square 'b' = do
   bads <- filterM (filter_empty brd) orthogs
   return (zip (repeat square) (diags ++ bads))
   where
-    filter_empty brd square = do
-      sq <- getBoardSquare brd square
+    filter_empty bord squar = do
+      sq <- getBoardSquare bord squar
       return (sq == '.')
 find_moves brd side square 'q' = do
   ups <- trace_up brd side square
@@ -259,15 +311,16 @@ move :: State s -> Move -> ST s (State s, Undo)
 move (State { toMove = who,
               turn = n,
               board = brd }) mov = do
-  (ch, promoted) <- movePiece brd mov
+  (ch, promote) <- movePiece brd mov
   return (State { toMove = opponent who,
                   turn = n + bump_turn who,
                   board = brd },
           Undo { capture = ch,
-                 promoted = promoted })
+                 promoted = promote })
   where
     bump_turn White = 0
     bump_turn Black = 1
+    bump_turn _ = error "internal error: bumping empty turn"
 
 unmove :: State s -> Move -> Undo -> ST s ()
 unmove (State { board = brd }) (src, dst) undo = do
@@ -280,6 +333,7 @@ unmove (State { board = brd }) (src, dst) undo = do
       case ss of
         'Q' -> setBoardSquare brd src 'P'
         'q' -> setBoardSquare brd src 'p'
+        _ -> error "internal error: unpromotion of non-queen"
 
 gameOver :: State s -> Undo -> ST s Bool
 gameOver s undo =
@@ -307,3 +361,4 @@ eval (State { toMove = White, board = b }) = evalBoardForWhite b
 eval (State { toMove = Black, board = b }) = do
   v <- evalBoardForWhite b
   return (-v)
+eval _ = error "internal error: eval with no one on move"

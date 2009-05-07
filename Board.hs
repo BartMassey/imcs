@@ -170,3 +170,4 @@ evalBoardForWhite (Board brd) = do
       sqval 'b' = -20
       sqval 'N' = 40
       sqval 'n' = -40
+      sqval _ = error "internal error: bad square value"

@@ -1,1 +1,4 @@
-module Version (version) where version = "1.0"
+module Version (version) where
+
+version :: String
+version = "1.0"

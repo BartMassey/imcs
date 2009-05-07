@@ -17,7 +17,6 @@ import Data.Maybe
 import System.IO
 import Control.Monad
 import Network
-import Control.Concurrent
 import Control.Concurrent.MVar
 
 import System.Console.ParseArgs
@@ -59,6 +58,6 @@ run_service port = do
 
 main :: IO ()
 main = do
-  args <- parseArgsIO ArgsComplete argd
-  let port = fromJust (getArgInt args OptionPort)
+  a <- parseArgsIO ArgsComplete argd
+  let port = fromJust (getArgInt a OptionPort)
   withSocketsDo $ withLogDo stdout (run_service port)
