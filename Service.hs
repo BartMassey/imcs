@@ -31,7 +31,8 @@ game_id_path = log_path ++ "/GAMEID"
 default_time :: Maybe Int
 default_time = Just 300000
 
-data GamePost = GameResv Int String String Char (Chan (String, Handle))
+data Wakeup = Wakeup String String Handle
+data GamePost = GameResv Int String String Char (Chan Wakeup)
 data ServiceState = ServiceState Int [GamePost]
 
 write_game_id :: Int -> IO ()
@@ -107,12 +108,13 @@ doCommands (h, client_id) state = do
             ServiceState game_id game_list <- liftIO $ takeMVar state
             my_name <- liftIO $ readIORef me
             let new_game =
-                    GameResv game_id client_id my_name (head color) wakeup
+                    GameResv game_id my_name client_id (head color) wakeup
             let service_state' =
                     ServiceState (game_id + 1) (game_list ++ [new_game])
             liftIO $ write_game_id (game_id + 1)
             liftIO $ putMVar state service_state'
-            (other_id, other_h) <- liftIO $ readChan wakeup
+            Wakeup other_name other_id other_h
+                <- liftIO $ readChan wakeup
             let run_game = do
                 logMsg $ "game " ++ client_id ++
                          " (" ++ color ++ ") vs " ++
@@ -153,7 +155,7 @@ doCommands (h, client_id) state = do
         ServiceState _ game_list <- readMVar state
         mapM_ output_game game_list
         where
-          output_game (GameResv game_id _ other_name color _) =
+          output_game (GameResv _ game_id other_name color _) =
             hPutStrLn h $ show game_id ++ " " ++ other_name ++ " " ++ [color]
       ["accept", id] -> do
         ServiceState game_id game_list <- liftIO $ takeMVar state
@@ -166,17 +168,19 @@ doCommands (h, client_id) state = do
               Nothing -> liftIO $ do
                 hPutStrLn h $ "no such game"
                 putMVar state $ ServiceState game_id game_list
-              Just (game_id', color, wakeup, game_list') ->  do
-                logMsg $ "client " ++ client_id ++ " accepts " ++ show game_id'
+              Just (other_name, color, wakeup, game_list') ->  do
+                logMsg $ "client " ++ client_id ++
+                         " accepts " ++ show other_name
                 liftIO $ do
                   writeIORef continue False
                   putMVar state $ ServiceState game_id game_list'
-                  writeChan wakeup (client_id, h)
+                  my_name <- readIORef me
+                  writeChan wakeup $ Wakeup my_name client_id h
             where
               find_game game_list = go [] game_list where
                 go _ [] = Nothing
-                go first this@(GameResv game_id _ _ color wakeup : rest)
+                go first this@(GameResv other_name _ _ color wakeup : rest)
                    | game_id == ask_id =
-                       Just (game_id, color, wakeup, first ++ rest)
+                       Just (other_name, color, wakeup, first ++ rest)
                    | otherwise = go (first ++ this) rest
       _ -> liftIO $ hPutStrLn h $ "unknown command"
