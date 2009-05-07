@@ -5,11 +5,12 @@
 # distribution of this software for license terms.
 
 HC = ghc
-HCFLAGS = -O2 # -prof -auto-all # -debug # -Wall 
-SRCS = Board.hs State.hs Main.hs Connection.hs
+HCFLAGS = # -O2 # -prof -auto-all # -debug # -Wall 
+SRCS = Board.hs Game.hs IMCS.hs Log.hs Service.hs \
+       State.hs Version.hs
 
-mcref: $(SRCS)
-	$(HC) $(HCFLAGS) --make -o imcs Main.hs
+imcs: $(SRCS)
+	$(HC) $(HCFLAGS) -o imcs --make IMCS.hs
 
 clean:
 	-rm -f imcs
