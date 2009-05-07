@@ -8,7 +8,6 @@ module Service(ServiceState, initServiceState, doCommands) where
 
 import Prelude hiding (catch)
 
-import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Concurrent.Chan
 import Control.Exception
@@ -64,18 +63,15 @@ initServiceState = do
       hClose idh
       return $ read l :: IO Int
     cleanup :: IOException -> IO Int
-    cleanup e = do
+    cleanup _ = do
       write_game_id 1
       return 1
 
 parse_int :: String -> Maybe Int
 parse_int "" = Nothing
 parse_int s
-    | all isDigit s = Just (go 0 s)
+    | length s < 9 && all isDigit s = Just (read s)
     | otherwise = Nothing
-    where
-      go cur [] = cur
-      go cur (c : cs) = go (10 * cur + digitToInt c) cs
 
 while :: IORef Bool -> LogIO () -> LogIO ()
 while b a = do
@@ -88,13 +84,13 @@ doCommands :: (Handle, String) -> MVar ServiceState -> LogIO ()
 doCommands (h, client_id) state = do
   liftIO $ hPutStrLn h $ "imcs " ++ version
   continue <- liftIO $ newIORef True
-  me <- liftIO $ newIORef client_id
+  me <- liftIO $ newIORef Nothing
   while continue $ do
     line <- liftIO $ hGetLine h
-    let command = words line
-    case command of
-      [] -> return ()
-      ["help"] ->
+    case words line of
+      [] -> do
+        return ()
+      ["help"] -> do
         liftIO $ hPutStr h $ unlines [
           " imcs " ++ version,
           " help: this help",
@@ -110,15 +106,25 @@ doCommands (h, client_id) state = do
           hClose h
       ["me", name] -> do
         logMsg $ "client " ++ client_id ++ " aka " ++ name
-        liftIO $ writeIORef me name
-      ["offer", color] ->
-        case valid_color color of
-          True -> do
+        liftIO $ writeIORef me $ Just name
+      ["list"] -> liftIO $ do
+        ServiceState _ game_list <- readMVar state
+        mapM_ output_game game_list
+        where
+          output_game (GameResv game_id other_name _ color _) =
+            hPutStrLn h $ show game_id ++ " " ++ other_name ++ " " ++ [color]
+      ["offer", color] -> do
+        maybe_my_name <- liftIO $ readIORef me
+        case (maybe_my_name, valid_color color) of
+          (Nothing, _) ->
+            liftIO $ hPutStrLn h "must set name first using me command"
+          (_, False) ->
+            liftIO $ hPutStrLn h $ "bad color " ++ color
+          (Just my_name, True) -> do
             logMsg $ "client " ++ client_id ++ " offers game as " ++ color
             wakeup <- liftIO $ newChan
             liftIO $ writeIORef continue False
             ServiceState game_id game_list <- liftIO $ takeMVar state
-            my_name <- liftIO $ readIORef me
             let new_game =
                     GameResv game_id my_name client_id (head color) wakeup
             let service_state' =
@@ -138,6 +144,7 @@ doCommands (h, client_id) state = do
                                          (other_h, default_time))
                                  'B' -> ((other_h, default_time),
                                          (h, default_time))
+                                 _   -> error "internal error: bad color"
                 let path = log_path ++ "/" ++ show game_id
                 game_log <- liftIO $ openFile path WriteMode
                 liftIO $ withLogDo game_log $ do
@@ -158,42 +165,35 @@ doCommands (h, client_id) state = do
                   hPutStrLn other_h "opponent incurred fatal IO error: exiting"
                   hClose other_h
             catchLogIO run_game clean_up
-          False ->
-            liftIO $ hPutStrLn h $ "bad color " ++ color
         where
           valid_color "W" = True
           valid_color "B" = True
           valid_color _ = False
-      ["list"] -> liftIO $ do
-        ServiceState _ game_list <- readMVar state
-        mapM_ output_game game_list
-        where
-          output_game (GameResv game_id other_name _ color _) =
-            hPutStrLn h $ show game_id ++ " " ++ other_name ++ " " ++ [color]
-      ["accept", id] -> do
-        ServiceState game_id game_list <- liftIO $ takeMVar state
-        case parse_int id of
-          Nothing -> liftIO $ do
-            hPutStrLn h "bad game id"
-            putMVar state $ ServiceState game_id game_list
-          Just ask_id -> 
+      ["accept", accept_game_id] -> do
+        maybe_my_name <- liftIO $ readIORef me
+        case (parse_int accept_game_id, maybe_my_name) of
+          (_, Nothing) ->
+            liftIO $ hPutStrLn h "must set name first using me command"
+          (Nothing, _) ->
+            liftIO $ hPutStrLn h "bad game id"
+          (Just ask_id, Just my_name) -> do
+            ServiceState game_id game_list <- liftIO $ takeMVar state
             case find_game game_list of
               Nothing -> liftIO $ do
                 hPutStrLn h $ "no such game"
                 putMVar state $ ServiceState game_id game_list
-              Just (other_name, color, wakeup, game_list') ->  do
+              Just (other_name, wakeup, game_list') ->  do
                 logMsg $ "client " ++ client_id ++
                          " accepts " ++ show other_name
                 liftIO $ do
                   writeIORef continue False
                   putMVar state $ ServiceState game_id game_list'
-                  my_name <- readIORef me
                   writeChan wakeup $ Wakeup my_name client_id h
             where
               find_game game_list = go [] game_list where
                 go _ [] = Nothing
-                go first this@(GameResv game_id' other_name _ color wakeup : rest)
+                go first this@(GameResv game_id' other_name _ _ wakeup : rest)
                    | game_id' == ask_id =
-                       Just (other_name, color, wakeup, first ++ rest)
+                       Just (other_name, wakeup, first ++ rest)
                    | otherwise = go (first ++ this) rest
       _ -> liftIO $ hPutStrLn h $ "unknown command"
