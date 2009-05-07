@@ -31,9 +31,21 @@ game_id_path = log_path ++ "/GAMEID"
 default_time :: Maybe Int
 default_time = Just 300000
 
-data Wakeup = Wakeup String String Handle
-data GamePost = GameResv Int String String Char (Chan Wakeup)
-data ServiceState = ServiceState Int [GamePost]
+data Wakeup = Wakeup {
+      wakeup_name :: String,
+      wakeup_client_id :: String,
+      wakeup_handle :: Handle }
+
+data GamePost = GameResv {
+      game_resv_game_id :: Int,
+      game_resv_name :: String,
+      game_resv_client_id :: String,
+      game_resv_side :: Char,
+      game_resv_wakeup :: Chan Wakeup }
+
+data ServiceState = ServiceState {
+      service_state_game_id :: Int,
+      service_state_game_list :: [GamePost] }
 
 write_game_id :: Int -> IO ()
 write_game_id game_id = do
@@ -116,22 +128,23 @@ doCommands (h, client_id) state = do
             Wakeup other_name other_id other_h
                 <- liftIO $ readChan wakeup
             let run_game = do
-                logMsg $ "game " ++ client_id ++
-                         " (" ++ color ++ ") vs " ++
-                         other_id ++ " begins"
+                let game_desc = show game_id ++ ": " ++
+                                my_name ++ "(" ++ client_id ++
+                                ", " ++ color ++ ") vs " ++
+                                other_name ++ "(" ++ other_id ++ ")"
+                logMsg $ "game " ++ game_desc ++ " begins"
                 let (p1, p2) = case head color of
                                  'W' -> ((h, default_time),
                                          (other_h, default_time))
                                  'B' -> ((other_h, default_time),
                                          (h, default_time))
-                let game_name = client_id ++ "@" ++ color ++ "-" ++ other_id
                 let path = log_path ++ "/" ++ show game_id
                 game_log <- liftIO $ openFile path WriteMode
                 liftIO $ withLogDo game_log $ do
                   time <- liftIO $ getClockTime
                   let date = calendarTimeToString $ toUTCTime time
-                  logMsg $ show game_id  ++ " " ++ date
-                  logMsg game_name
+                  logMsg game_desc
+                  logMsg date
                   doGame p1 p2
                 liftIO $ hClose h
                 liftIO $ hClose other_h
