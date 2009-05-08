@@ -38,25 +38,36 @@ read_move problem handle = do
                           candidates <- moves state
                           return (elem mov candidates)
 
-update_time :: Maybe Int -> Int -> Maybe Int
-update_time Nothing _ = Nothing
-update_time (Just had) lost = Just ((had - lost) `max` 0)
+data TimerState = Untimed | FirstMove Int | TimeRemaining Int
+
+update_time :: TimerState -> Int -> TimerState
+update_time Untimed _ = Untimed
+update_time fm@(FirstMove _) _ = fm
+update_time (TimeRemaining had) lost = TimeRemaining ((had - lost) `max` 0)
+
+start_clock :: TimerState -> TimerState
+start_clock Untimed = Untimed
+start_clock (FirstMove t) = TimeRemaining t
+start_clock tr@(TimeRemaining _) = tr
 
 get_clock_time_ms :: IO Integer
 get_clock_time_ms = do
   TOD sec picosec <- getClockTime
   return (sec * 1000 + (picosec `div` (10^9)))
 
-times_fmt :: Maybe Int -> Maybe Int -> String
+times_fmt :: TimerState -> TimerState -> String
 times_fmt this_t other_t =
   "?" ++ time_fmt this_t ++ time_fmt other_t
   where
-    time_fmt (Just t) = printf " %02d:%06.3f" mins secs where
+    time_fmt (TimeRemaining t) = printf " %02d:%06.3f" mins secs where
         mins = t `div` 60000
         secs = fromIntegral (t - 60000 * mins) / 1000 :: Double
-    time_fmt Nothing = " -"
+    time_fmt (FirstMove t) = time_fmt $ TimeRemaining t
+    time_fmt Untimed = " -"
 
-do_turn :: CState -> CState -> Problem -> LogIO (Maybe (Problem, Maybe Int))
+type TCState = (Handle, TimerState)
+
+do_turn :: TCState -> TCState -> Problem -> LogIO (Maybe (Problem, TimerState))
 do_turn (this_h, this_t) (other_h, other_t) problem = do
   alsoLogMsg this_h ""
   alsoLogMsg this_h (showProblem problem)
@@ -67,7 +78,7 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
   let elapsed = fromIntegral (now_msecs - then_msecs)
   let time' = update_time this_t elapsed
   case time' of
-    Just 0 -> do
+    TimeRemaining 0 -> do
       let loser = (showSide . problemToMove) problem
       alsoLogMsg other_h $ [loser] ++ " loses on time"
       return Nothing
@@ -100,7 +111,7 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
               let move_string = showMove mov
               logMsg move_string
               liftIO $ hPutStrLn other_h $ "! " ++ move_string
-              return (Just (problem', time'))
+              return (Just (problem', start_clock time'))
   where
     execute_move mov = do
       state <- animateProblem problem
@@ -109,14 +120,11 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
       problem' <- snapshotState state'
       return (capture undo, stop, problem')
 
-run_game :: Problem -> CState -> CState -> LogIO ()
+run_game :: Problem -> TCState -> TCState -> LogIO ()
 run_game problem (h, t) other = do
   let side = problemToMove problem
   let trn = problemTurn problem
-  let t0 = case (side, trn) of
-             (White, 1) -> Nothing
-             _ -> t
-  result <- do_turn (h, t0) other problem
+  result <- do_turn (h, t) other problem
   case result of
     Nothing -> return ()
     Just (problem', t') -> do
@@ -124,19 +132,22 @@ run_game problem (h, t) other = do
         if side' == side 
           then run_game problem' (h, t') other
           else do
-            let t1 = case (t, t0) of
-                       (Just _, Nothing) -> t
-                       _ -> t'
-            run_game problem' other (h, t1)
+            run_game problem' other (h, t')
 
 doProblem :: Problem -> CState -> CState -> LogIO ()
-doProblem problem w@(h_w, _) b@(h_b, _) = do
+doProblem problem w b = do
   case problemToMove problem of
-    White -> run_game problem w b
-    Black -> run_game problem b w
+    White -> run_game problem (stop_clock w) (pend_clock b)
+    Black -> run_game problem (stop_clock b) (pend_clock w)
     _ -> error "internal error: run_game with no color"
-  liftIO $ hClose h_w
-  liftIO $ hClose h_b
+  close_h w
+  close_h b
+  where
+    close_h (h, _) = liftIO $ hClose h
+    stop_clock (h, Nothing) = (h, Untimed)
+    stop_clock (h, Just t) = (h, FirstMove t)
+    pend_clock (h, Nothing) = (h, Untimed)
+    pend_clock (h, Just t) = (h, TimeRemaining t)
 
 doGame :: CState -> CState -> LogIO ()
 doGame = doProblem startProblem         
