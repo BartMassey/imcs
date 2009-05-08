@@ -4,4 +4,4 @@
 * finish color arbitration
 * add time arbitration
 * better handling of unexpected disconnects
-* canonize protocol
+* document protocol

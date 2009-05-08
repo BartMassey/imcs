@@ -141,7 +141,7 @@ pw_lookup ss name = lookup name pwf where
 
 doCommands :: (Handle, String) -> MVar ServiceState -> LogIO ()
 doCommands (h, client_id) state = do
-  liftIO $ hPutStrLn h $ "imcs " ++ version
+  liftIO $ hPutStrLn h $ "100 imcs " ++ version
   continue <- liftIO $ newIORef True
   me <- liftIO $ newIORef Nothing
   while continue $ do
@@ -151,7 +151,7 @@ doCommands (h, client_id) state = do
         return ()
       ["help"] -> do
         liftIO $ hPutStr h $ unlines [
-          " imcs " ++ version,
+          "101 imcs " ++ version ++ " help",
           " help: this help",
           " quit: quit imcs",
           " me <name> <password>: log in",
@@ -159,30 +159,33 @@ doCommands (h, client_id) state = do
           " password <password>: change password",
           " list: list available games (<id> <opponent-name> <opponent-color>)",
           " offer <color>: offer a game as W or B",
-          " accept <id>: accept a game with an opponent" ]
+          " accept <id>: accept a game with an opponent",
+          "." ]
       ["quit"] -> do
         logMsg $ "client " ++ client_id ++ " quits"
         liftIO $ do
+          hPutStrLn h "200 Goodbye"
           writeIORef continue False
           hClose h
       ["me", name, password] -> do
         ss <- liftIO $ readMVar state
         case pw_lookup ss name of
           Nothing ->
-              liftIO $ hPutStrLn h $ "no such username: " ++
+              liftIO $ hPutStrLn h $ "400 no such username: " ++
                                      "please use register command"
           Just password' ->
               if password /= password'
               then
-                liftIO $ hPutStrLn h "wrong password"
+                liftIO $ hPutStrLn h "401 wrong password"
               else do
                 logMsg $ "client " ++ client_id ++ " aka " ++ name
                 liftIO $ writeIORef me $ Just name
+                liftIO $ hPutStrLn h $ "201 hello " ++ name
       ["register", name, password] -> do
          ss <- liftIO $ takeMVar state
          case pw_lookup ss name of
            Just _ -> liftIO $ do
-             hPutStrLn h $ "username already exists: " ++
+             hPutStrLn h $ "402 username already exists: " ++
                            "please use password command to change"
              putMVar state ss
            Nothing -> do
@@ -196,19 +199,20 @@ doCommands (h, client_id) state = do
                write_pwf pwf'
                putMVar state ss'
                writeIORef me $ Just name
+               hPutStrLn h $ "202 hello new user " ++ name
       ["password", password] -> do
         maybe_my_name <- liftIO $ readIORef me
         case maybe_my_name of
           Nothing ->
-            liftIO $ hPutStrLn h "please use the me command first"
+            liftIO $ hPutStrLn h "403 please use the me command first"
           Just my_name -> do
             ss <- liftIO $ takeMVar state
             case pw_lookup ss my_name of
               Nothing -> do
-                liftIO $ hPutStrLn h "you do not exist: go away"
                 logMsg $ "client " ++ client_id ++ " name " ++
                          my_name ++ "not in password file"
                 liftIO $ putMVar state ss
+                liftIO $ hPutStrLn h "500 you do not exist: go away"
               Just _ -> do
                 logMsg $ "changing password for client " ++ client_id ++
                          " user " ++ my_name
@@ -218,21 +222,26 @@ doCommands (h, client_id) state = do
                      | otherwise = e
                 let pwf' = map newpass pwf
                 let ss' = ServiceState game_id game_list pwf'
-                liftIO $ write_pwf pwf'
-                liftIO $ putMVar state ss'
+                liftIO $ do
+                  write_pwf pwf'
+                  putMVar state ss'
+                  hPutStrLn h $ "203 password change for user " ++ my_name
       ["list"] -> liftIO $ do
         ServiceState _ game_list _ <- readMVar state
+        hPutStrLn h "204 available games"
         mapM_ output_game game_list
+        hPutStrLn h "."
         where
           output_game (GameResv game_id other_name _ color _) =
-            hPutStrLn h $ show game_id ++ " " ++ other_name ++ " " ++ [color]
+            hPutStrLn h $ " " ++ show game_id ++
+                          " " ++ other_name ++ " " ++ [color]
       ["offer", color] -> do
         maybe_my_name <- liftIO $ readIORef me
         case (maybe_my_name, valid_color color) of
           (Nothing, _) ->
-            liftIO $ hPutStrLn h "must set name first using me command"
+            liftIO $ hPutStrLn h "404 must set name first using me command"
           (_, False) ->
-            liftIO $ hPutStrLn h $ "bad color " ++ color
+            liftIO $ hPutStrLn h $ "405 bad color " ++ color
           (Just my_name, True) -> do
             logMsg $ "client " ++ client_id ++ " offers game as " ++ color
             wakeup <- liftIO $ newChan
@@ -242,10 +251,13 @@ doCommands (h, client_id) state = do
                     GameResv game_id my_name client_id (head color) wakeup
             let service_state' =
                     ServiceState (game_id + 1) (game_list ++ [new_game]) pwf
-            liftIO $ write_game_id (game_id + 1)
-            liftIO $ putMVar state service_state'
+            liftIO $ do
+              write_game_id (game_id + 1)
+              putMVar state service_state'
+              hPutStrLn h "205 waiting for offer acceptance"
             Wakeup other_name other_id other_h
                 <- liftIO $ readChan wakeup
+            liftIO $ hPutStrLn h "102 received acceptance"
             let run_game = do
                 let game_desc = show game_id ++ ": " ++
                                 my_name ++ "(" ++ client_id ++
@@ -273,9 +285,9 @@ doCommands (h, client_id) state = do
                 logMsg $ "game " ++ client_id ++
                          " incurs IO error: " ++ show e
                 liftIO $ do
-                  hPutStrLn h "opponent incurred fatal IO error: exiting"
+                  hPutStrLn h "103 fatal IO error: exiting"
                   hClose h
-                  hPutStrLn other_h "opponent incurred fatal IO error: exiting"
+                  hPutStrLn other_h "103 fatal IO error: exiting"
                   hClose other_h
             catchLogIO run_game clean_up
         where
@@ -286,14 +298,14 @@ doCommands (h, client_id) state = do
         maybe_my_name <- liftIO $ readIORef me
         case (parse_int accept_game_id, maybe_my_name) of
           (_, Nothing) ->
-            liftIO $ hPutStrLn h "must set name first using me command"
+            liftIO $ hPutStrLn h "406 must set name first using me command"
           (Nothing, _) ->
-            liftIO $ hPutStrLn h "bad game id"
+            liftIO $ hPutStrLn h "407 bad game id"
           (Just ask_id, Just my_name) -> do
             ServiceState game_id game_list pwf <- liftIO $ takeMVar state
             case find_game game_list of
               Nothing -> liftIO $ do
-                hPutStrLn h $ "no such game"
+                hPutStrLn h $ "408 no such game"
                 putMVar state $ ServiceState game_id game_list pwf
               Just (other_name, wakeup, game_list') ->  do
                 logMsg $ "client " ++ client_id ++
@@ -301,6 +313,7 @@ doCommands (h, client_id) state = do
                 liftIO $ do
                   writeIORef continue False
                   putMVar state $ ServiceState game_id game_list' pwf
+                  hPutStrLn h "206 accepting offer"
                   writeChan wakeup $ Wakeup my_name client_id h
             where
               find_game game_list = go [] game_list where
@@ -309,4 +322,4 @@ doCommands (h, client_id) state = do
                    | game_id' == ask_id =
                        Just (other_name, wakeup, first ++ rest)
                    | otherwise = go (first ++ this) rest
-      _ -> liftIO $ hPutStrLn h $ "unknown command"
+      _ -> liftIO $ hPutStrLn h $ "499 unknown command"
