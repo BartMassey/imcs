@@ -2,4 +2,4 @@
 *.o
 imcs
 LogTest.hs
-log/
+imcsd/
