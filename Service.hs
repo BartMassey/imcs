@@ -151,7 +151,7 @@ doCommands (h, client_id) state = do
         return ()
       ["help"] -> do
         liftIO $ hPutStr h $ unlines [
-          "101 imcs " ++ version ++ " help",
+          "210 imcs " ++ version ++ " help",
           " help: this help",
           " quit: quit imcs",
           " me <name> <password>: log in",
@@ -228,7 +228,7 @@ doCommands (h, client_id) state = do
                   hPutStrLn h $ "203 password change for user " ++ my_name
       ["list"] -> liftIO $ do
         ServiceState _ game_list _ <- readMVar state
-        hPutStrLn h "204 available games"
+        hPutStrLn h "211 available games"
         mapM_ output_game game_list
         hPutStrLn h "."
         where
@@ -254,7 +254,7 @@ doCommands (h, client_id) state = do
             liftIO $ do
               write_game_id (game_id + 1)
               putMVar state service_state'
-              hPutStrLn h "205 waiting for offer acceptance"
+              hPutStrLn h "101 waiting for offer acceptance"
             Wakeup other_name other_id other_h
                 <- liftIO $ readChan wakeup
             liftIO $ hPutStrLn h "102 received acceptance"
@@ -285,9 +285,7 @@ doCommands (h, client_id) state = do
                 logMsg $ "game " ++ client_id ++
                          " incurs IO error: " ++ show e
                 liftIO $ do
-                  hPutStrLn h "103 fatal IO error: exiting"
-                  hClose h
-                  hPutStrLn other_h "103 fatal IO error: exiting"
+                  hPutStrLn other_h "420 fatal IO error: exiting"
                   hClose other_h
             catchLogIO run_game clean_up
         where
@@ -313,7 +311,7 @@ doCommands (h, client_id) state = do
                 liftIO $ do
                   writeIORef continue False
                   putMVar state $ ServiceState game_id game_list' pwf
-                  hPutStrLn h "206 accepting offer"
+                  hPutStrLn h "103 accepting offer"
                   writeChan wakeup $ Wakeup my_name client_id h
             where
               find_game game_list = go [] game_list where
@@ -322,4 +320,4 @@ doCommands (h, client_id) state = do
                    | game_id' == ask_id =
                        Just (other_name, wakeup, first ++ rest)
                    | otherwise = go (first ++ this) rest
-      _ -> liftIO $ hPutStrLn h $ "499 unknown command"
+      _ -> liftIO $ hPutStrLn h $ "501 unknown command"

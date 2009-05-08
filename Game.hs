@@ -86,7 +86,7 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
       case movt of
         Resign -> do
           let loser = (showSide . problemToMove) problem
-          alsoLogMsg other_h $ [loser] ++ " resigns"
+          alsoLogMsg other_h $ "202 " ++ [loser] ++ " resigns"
           return Nothing
         IllegalMove -> do
           alsoLogMsg this_h ("? illegal move")
@@ -106,7 +106,7 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
               where
                 report msg = do
                   alsoLogMsg this_h msg
-                  liftIO $ hPutStrLn other_h msg
+                  liftIO $ hPutStrLn other_h $ "202 " ++ msg
             False -> do
               let move_string = showMove mov
               logMsg move_string
