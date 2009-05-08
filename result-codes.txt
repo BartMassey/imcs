@@ -3,7 +3,7 @@ following lines terminating with a period "." on a line by
 itself.
 
 100 imcs <version>
-101 waiting for offer acceptance
+101 game <id> waiting for offer acceptance
 102 received acceptance
 103 accepting offer
 200 Goodbye
