@@ -80,33 +80,37 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
   case time' of
     TimeRemaining 0 -> do
       let loser = (showSide . problemToMove) problem
-      alsoLogMsg other_h $ [loser] ++ " loses on time"
+      case loser of
+        'W' -> alsoLogMsg other_h $ "232 W loses on time"
+        'B' -> alsoLogMsg other_h $ "231 B loses on time"
       return Nothing
     _ -> do
       case movt of
         Resign -> do
           let loser = (showSide . problemToMove) problem
-          alsoLogMsg other_h $ "202 " ++ [loser] ++ " resigns"
+	  case loser of
+            'W' -> alsoLogMsg other_h $ "232 W resigns"
+            'B' -> alsoLogMsg other_h $ "231 B resigns"
           return Nothing
         IllegalMove -> do
-          alsoLogMsg this_h ("? illegal move")
+          alsoLogMsg this_h ("X illegal move")
           return (Just (problem, time'))
         InvalidMove -> do
-          alsoLogMsg this_h ("? invalid move")
+          alsoLogMsg this_h ("X invalid move")
           return (Just (problem, time'))
         GoodMove mov -> do
           let (captured, stop, problem') = runST (execute_move mov)
           case stop of
             True -> do
               case captured of
-                'K' -> report "B wins"
-                'k' -> report "W wins"
-                _   -> report "draw"
+                'K' -> report "232 B wins"
+                'k' -> report "231 W wins"
+                _   -> report "230 draw"
               return Nothing
               where
                 report msg = do
                   alsoLogMsg this_h msg
-                  liftIO $ hPutStrLn other_h $ "202 " ++ msg
+                  liftIO $ hPutStrLn other_h msg
             False -> do
               let move_string = showMove mov
               logMsg move_string
