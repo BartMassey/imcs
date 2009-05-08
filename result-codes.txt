@@ -1,0 +1,33 @@
+Result codes for IMCS.  Lines ending in ...  will have
+following lines terminating with a period "." on a line by
+itself.
+
+100 imcs <version>
+101 waiting for offer acceptance
+102 received acceptance
+103 accepting offer
+200 Goodbye
+201 hello <name>
+202 hello new user <name>
+203 password change for user <name>
+210 imcs <version> help ...
+211 available games ...
+230 draw
+231 W wins
+231 B resigns
+231 B loses on time
+232 B wins
+232 W resigns
+232 W loses on time
+400 no such username
+401 wrong password
+402 username already exists
+403 please use the me command first
+404 must set name first using me command
+405 bad color <color>
+406 must set name first using me command
+407 bad game id
+408 no such game
+420 fatal IO error
+500 you do not exist
+501 unknown command
