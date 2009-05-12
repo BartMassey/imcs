@@ -1,7 +1,5 @@
-* add locking against other instances
 * add webpage generation support
-* add ranking support
 * finish color arbitration
 * add time arbitration
 * better handling of unexpected disconnects
-* document protocol
+* better document protocol
