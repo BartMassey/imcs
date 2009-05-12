@@ -14,9 +14,11 @@ import Prelude hiding (catch)
 
 import Control.Concurrent.Chan
 import Control.Concurrent.MVar
+import Control.Exception (evaluate)
 import Control.Monad
 import Data.Char
 import Data.IORef
+import System.Exit
 import System.FilePath
 import System.IO
 import System.IO.Error
@@ -78,8 +80,8 @@ data ServiceState = ServiceState {
 
 initServiceDir :: IO ()
 initServiceDir = do
-  version <- read_versionf
-  case version of
+  fversion <- read_versionf
+  case fversion of
     "" -> do
       game_id <- read_game_id
       case game_id of
@@ -166,6 +168,11 @@ read_game_id = catch read_game_file give_up where
 
 initServiceState :: IO ServiceState
 initServiceState = do
+  fversion <- read_versionf
+  unless (fversion == version)
+         (evaluate $ error $ "daemon " ++ version ++
+                             ", fs " ++ fversion ++
+                             ": exiting")
   next_game_id <- read_game_id
   pwf <- read_pwf
   return $ ServiceState {
