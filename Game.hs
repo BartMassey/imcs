@@ -24,19 +24,23 @@ data MoveResult = Resign | InvalidMove | IllegalMove | GoodMove Move
 read_move :: Problem -> Handle -> IO MoveResult
 read_move problem handle = do
   move_str <- hGetLine handle
-  case unwords $ words $ move_str of
-    "resign" -> return Resign
-    move_str' ->
-        case readMove move_str' of
-          Nothing -> return InvalidMove
-          Just mov -> case runST check_move of
-                        True -> return $ GoodMove mov
-                        False -> return $ IllegalMove
-                      where
-                        check_move = do
-                          state <- animateProblem problem
-                          candidates <- moves state
-                          return (elem mov candidates)
+  case words move_str of
+    ["resign"] -> return Resign
+    ["!", move_word] -> process_move move_word
+    [move_word] -> process_move move_word
+    _ -> return InvalidMove
+    where
+      process_move move_word = 
+          case readMove move_word of
+            Nothing -> return InvalidMove
+            Just mov -> case runST check_move of
+                          True -> return $ GoodMove mov
+                          False -> return IllegalMove
+                        where
+                          check_move = do
+                            state <- animateProblem problem
+                            candidates <- moves state
+                            return (elem mov candidates)
 
 data TimerState = Untimed | FirstMove Int | TimeRemaining Int
 
