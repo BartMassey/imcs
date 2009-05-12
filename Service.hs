@@ -18,6 +18,8 @@ import Control.Exception (evaluate)
 import Control.Monad
 import Data.Char
 import Data.IORef
+import Data.List
+import Data.Ord
 import System.Exit
 import System.FilePath
 import System.IO
@@ -215,7 +217,9 @@ doCommands (h, client_id) state = do
           " me <name> <password>: log in",
           " register <name> <password>: register a new name and log in",
           " password <password>: change password",
-          " list: list available games (<id> <opponent-name> <opponent-color>)",
+          " list: list available games in format",
+          "       <id> <opponent-name> <opponent-color> <opponent-rating>",
+          " ratings: list player ratings (top 10 plus own)",
           " offer <color>: offer a game as W or B",
           " accept <id>: accept a game with an opponent",
           "." ]
@@ -295,6 +299,29 @@ doCommands (h, client_id) state = do
                           " " ++ other_name ++
                           " " ++ [color] ++
                           " " ++ show rating
+      ["ratings"] -> liftIO $ do
+        ServiceState _ _ pwf <- readMVar state
+        maybe_my_name <- readIORef me
+        let ratings = map rating_info pwf
+        let top10 = take 10 $ sortBy (comparing (negate . snd)) ratings
+        let rating_list =
+                case maybe_my_name of
+                  Nothing -> top10
+                  Just my_name ->
+                      case lookup my_name top10 of
+                        Just _ -> top10
+                        Nothing ->
+                            case lookup my_name ratings of
+                              Nothing -> top10
+                              Just my_rating -> top10 ++ [(my_name, my_rating)]
+        hPutStrLn h "212 ratings"
+        mapM_ output_rating rating_list
+        hPutStrLn h "."
+        where
+          rating_info (PWFEntry pname _ prating) = (pname, prating)
+          output_rating (pname, prating) =
+            hPutStrLn h $ " " ++ pname ++
+                          " " ++ show prating
       ["offer", color] -> do
         maybe_my_name <- liftIO $ readIORef me
         case (maybe_my_name, valid_color color) of
