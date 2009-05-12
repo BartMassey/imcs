@@ -254,7 +254,7 @@ doCommands (h, client_id) state = do
             liftIO $ do
               write_game_id (game_id + 1)
               putMVar state service_state'
-              hPutStrLn h $ "101 game " ++ game_id ++
+              hPutStrLn h $ "101 game " ++ show game_id ++
                             " waiting for offer acceptance"
             Wakeup other_name other_id other_h
                 <- liftIO $ readChan wakeup

@@ -81,16 +81,16 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
     TimeRemaining 0 -> do
       let loser = (showSide . problemToMove) problem
       case loser of
-        'W' -> alsoLogMsg other_h $ "232 W loses on time"
-        'B' -> alsoLogMsg other_h $ "231 B loses on time"
+        'B' -> report "231" "W wins on time"
+        'W' -> report "232" "B wins on time"
       return Nothing
     _ -> do
       case movt of
         Resign -> do
           let loser = (showSide . problemToMove) problem
 	  case loser of
-            'W' -> alsoLogMsg other_h $ "232 W resigns"
-            'B' -> alsoLogMsg other_h $ "231 B resigns"
+            'B' -> report "231" "W wins on resignation"
+            'W' -> report "232" "B wins on resignation"
           return Nothing
         IllegalMove -> do
           alsoLogMsg this_h ("X illegal move")
@@ -103,14 +103,10 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
           case stop of
             True -> do
               case captured of
-                'K' -> report "232 B wins"
-                'k' -> report "231 W wins"
-                _   -> report "230 draw"
+                'K' -> report "232" "B wins"
+                'k' -> report "231" "W wins"
+                _   -> report "230" "draw"
               return Nothing
-              where
-                report msg = do
-                  alsoLogMsg this_h msg
-                  liftIO $ hPutStrLn other_h msg
             False -> do
               let move_string = showMove mov
               logMsg move_string
@@ -123,6 +119,11 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
       stop <- gameOver state' undo
       problem' <- snapshotState state'
       return (capture undo, stop, problem')
+    report code msg = do
+      liftIO $ hPutStrLn this_h $ "= " ++ msg
+      liftIO $ hPutStrLn other_h $ "= " ++ msg
+      alsoLogMsg this_h $ code ++ " " ++ msg
+      liftIO $ hPutStrLn other_h $ code ++ " " ++ msg
 
 run_game :: Problem -> TCState -> TCState -> LogIO ()
 run_game problem (h, t) other = do
