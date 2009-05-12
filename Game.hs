@@ -70,8 +70,9 @@ times_fmt this_t other_t =
     time_fmt Untimed = " -"
 
 type TCState = (Handle, TimerState)
+type TurnResult = Either (Problem, TimerState) Int
 
-do_turn :: TCState -> TCState -> Problem -> LogIO (Maybe (Problem, TimerState))
+do_turn :: TCState -> TCState -> Problem -> LogIO TurnResult
 do_turn (this_h, this_t) (other_h, other_t) problem = do
   alsoLogMsg this_h ""
   alsoLogMsg this_h (showProblem problem)
@@ -85,37 +86,48 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
     TimeRemaining 0 -> do
       let loser = (showSide . problemToMove) problem
       case loser of
-        'B' -> report "231" "W wins on time"
-        'W' -> report "232" "B wins on time"
-      return Nothing
+        'B' -> do
+          report "231" "W wins on time"
+          return $ Right 1
+        'W' -> do
+          report "232" "B wins on time"
+          return $ Right (-1)
     _ -> do
       case movt of
         Resign -> do
           let loser = (showSide . problemToMove) problem
 	  case loser of
-            'B' -> report "231" "W wins on resignation"
-            'W' -> report "232" "B wins on resignation"
-          return Nothing
+            'B' -> do
+              report "231" "W wins on resignation"
+              return $ Right 1
+            'W' -> do
+              report "232" "B wins on resignation"
+              return $ Right (-1)
         IllegalMove -> do
           alsoLogMsg this_h ("- illegal move")
-          return (Just (problem, time'))
+          return (Left (problem, time'))
         InvalidMove -> do
           alsoLogMsg this_h ("- invalid move")
-          return (Just (problem, time'))
+          return (Left (problem, time'))
         GoodMove mov -> do
           let (captured, stop, problem') = runST (execute_move mov)
           case stop of
             True -> do
               case captured of
-                'K' -> report "232" "B wins"
-                'k' -> report "231" "W wins"
-                _   -> report "230" "draw"
-              return Nothing
+                'k' -> do
+                  report "231" "W wins"
+                  return $ Right 1
+                'K' -> do
+                  report "232" "B wins"
+                  return $ Right (-1)
+                _   -> do
+                  report "230" "draw"
+                  return $ Right 0
             False -> do
               let move_string = showMove mov
               logMsg move_string
               liftIO $ hPutStrLn other_h $ "! " ++ move_string
-              return (Just (problem', start_clock time'))
+              return (Left (problem', start_clock time'))
   where
     execute_move mov = do
       state <- animateProblem problem
@@ -129,28 +141,29 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
       alsoLogMsg this_h $ code ++ " " ++ msg
       liftIO $ hPutStrLn other_h $ code ++ " " ++ msg
 
-run_game :: Problem -> TCState -> TCState -> LogIO ()
+run_game :: Problem -> TCState -> TCState -> LogIO Int
 run_game problem (h, t) other = do
   let side = problemToMove problem
   let trn = problemTurn problem
   result <- do_turn (h, t) other problem
   case result of
-    Nothing -> return ()
-    Just (problem', t') -> do
-        let side' = problemToMove problem'
-        if side' == side 
-          then run_game problem' (h, t') other
-          else do
-            run_game problem' other (h, t')
+    Left (problem', t') -> do
+      let side' = problemToMove problem'
+      if side' == side 
+         then run_game problem' (h, t') other
+         else do
+           run_game problem' other (h, t')
+    Right s -> return s
 
-doProblem :: Problem -> CState -> CState -> LogIO ()
+doProblem :: Problem -> CState -> CState -> LogIO Int
 doProblem problem w b = do
-  case problemToMove problem of
+  s <- case problemToMove problem of
     White -> run_game problem (stop_clock w) (pend_clock b)
     Black -> run_game problem (stop_clock b) (pend_clock w)
     _ -> error "internal error: run_game with no color"
   close_h w
   close_h b
+  return s
   where
     close_h (h, _) = liftIO $ hClose h
     stop_clock (h, Nothing) = (h, Untimed)
@@ -158,5 +171,5 @@ doProblem problem w b = do
     pend_clock (h, Nothing) = (h, Untimed)
     pend_clock (h, Just t) = (h, TimeRemaining t)
 
-doGame :: CState -> CState -> LogIO ()
+doGame :: CState -> CState -> LogIO Int
 doGame = doProblem startProblem         

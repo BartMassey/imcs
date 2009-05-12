@@ -63,6 +63,7 @@ data GamePost = GameResv {
       game_resv_name :: String,
       game_resv_client_id :: String,
       game_resv_side :: Char,
+      game_resv_rating :: Rating,
       game_resv_wakeup :: Chan Wakeup }
 
 data PWFEntry = PWFEntry {
@@ -185,9 +186,9 @@ while b a = do
     False -> return ()
     True -> a >> while b a
 
-pw_lookup :: ServiceState -> String -> Maybe String
+pw_lookup :: ServiceState -> String -> Maybe (String, Rating)
 pw_lookup ss name = lookup name pwf where
-    pwf = map (\(PWFEntry n p _) -> (n, p)) $ service_state_pwf ss
+    pwf = map (\(PWFEntry n p r) -> (n, (p, r))) $ service_state_pwf ss
 
 doCommands :: (Handle, String) -> MVar ServiceState -> LogIO ()
 doCommands (h, client_id) state = do
@@ -223,7 +224,7 @@ doCommands (h, client_id) state = do
           Nothing ->
               liftIO $ hPutStrLn h $ "400 no such username: " ++
                                      "please use register command"
-          Just password' ->
+          Just (password', rating') ->
               if password /= password'
               then
                 liftIO $ hPutStrLn h "401 wrong password"
@@ -282,9 +283,11 @@ doCommands (h, client_id) state = do
         mapM_ output_game game_list
         hPutStrLn h "."
         where
-          output_game (GameResv game_id other_name _ color _) =
+          output_game (GameResv game_id other_name _ color rating _) =
             hPutStrLn h $ " " ++ show game_id ++
-                          " " ++ other_name ++ " " ++ [color]
+                          " " ++ other_name ++
+                          " " ++ [color] ++
+                          " " ++ show rating
       ["offer", color] -> do
         maybe_my_name <- liftIO $ readIORef me
         case (maybe_my_name, valid_color color) of
@@ -296,9 +299,15 @@ doCommands (h, client_id) state = do
             logMsg $ "client " ++ client_id ++ " offers game as " ++ color
             wakeup <- liftIO $ newChan
             liftIO $ writeIORef continue False
-            ServiceState game_id game_list pwf <- liftIO $ takeMVar state
+            ss <- liftIO $ takeMVar state
+            let ServiceState game_id game_list pwf = ss
+            let my_rating = case pw_lookup ss my_name of
+                              Just (_, r) -> r
+                              --- XXX shouldn't normally happen
+                              Nothing -> baseRating
             let new_game =
-                    GameResv game_id my_name client_id (head color) wakeup
+                    GameResv game_id my_name client_id (head color)
+                             my_rating wakeup
             let service_state' =
                     ServiceState (game_id + 1) (game_list ++ [new_game]) pwf
             liftIO $ do
@@ -315,12 +324,13 @@ doCommands (h, client_id) state = do
                                 ", " ++ color ++ ") vs " ++
                                 other_name ++ "(" ++ other_id ++ ")"
                 logMsg $ "game " ++ game_desc ++ " begins"
-                let (p1, p2) = case head color of
-                                 'W' -> ((h, default_time),
-                                         (other_h, default_time))
-                                 'B' -> ((other_h, default_time),
-                                         (h, default_time))
-                                 _   -> error "internal error: bad color"
+                let ((p1, p1_name), (p2, p2_name)) = 
+                    case head color of
+                      'W' -> (((h, default_time), my_name),
+                              ((other_h, default_time), other_name))
+                      'B' -> (((other_h, default_time), other_name),
+                              ((h, default_time), my_name))
+                      _   -> error "internal error: bad color"
                 let path = log_path </> show game_id
                 game_log <- liftIO $ openFile path WriteMode
                 liftIO $ withLogDo game_log $ do
@@ -328,7 +338,28 @@ doCommands (h, client_id) state = do
                   let date = calendarTimeToString $ toUTCTime time
                   logMsg game_desc
                   logMsg date
-                  doGame p1 p2
+                  score <- doGame p1 p2
+                  p1_rating <- lookup_rating p1_name
+                  p2_rating <- lookup_rating p2_name
+                  update_rating p1_name p1_rating p2_rating score
+                  update_rating p2_name p2_rating p1_rating (-score)
+                  where
+                    lookup_rating name = do
+                       ss <- readMVar state
+                       case pw_lookup ss name of
+                         Just (_, rating) -> return rating
+                         --- XXX should never happen
+                         Nothing -> return baseRating
+                       update_rating name ra rb s = do
+                         let ra' = updateRating ra rb s
+                         ss <- takeMVar state
+                         let ServiceState game_id game_list pwf = ss
+                         let newpass e@(PWFEntry n password _)
+                           | n == name = PWFEntry n password ra'
+                           | otherwise = e
+                         let pwf' = map newpass pwf
+                         let ss' = ServiceState game_id game_list pwf'
+                         putMVar state ss'
                 liftIO $ hClose h
                 liftIO $ hClose other_h
                 logMsg $ "client " ++ client_id ++ " closes"
@@ -336,8 +367,14 @@ doCommands (h, client_id) state = do
                 logMsg $ "game " ++ client_id ++
                          " incurs IO error: " ++ show e
                 liftIO $ do
-                  hPutStrLn other_h "420 fatal IO error: exiting"
-                  hClose other_h
+                  close_it h
+                  close_it other_h
+                where
+                  close_it h = 
+                    catch (do
+                              hPutStrLn h "420 fatal IO error: exiting"
+                              hClose h)
+                          (\_ -> return ())
             catchLogIO run_game clean_up
         where
           valid_color "W" = True
@@ -367,7 +404,7 @@ doCommands (h, client_id) state = do
             where
               find_game game_list = go [] game_list where
                 go _ [] = Nothing
-                go first this@(GameResv game_id' other_name _ _ wakeup : rest)
+                go first this@(GameResv game_id' other_name _ _ _ wakeup : rest)
                    | game_id' == ask_id =
                        Just (other_name, wakeup, first ++ rest)
                    | otherwise = go (first ++ this) rest
