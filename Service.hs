@@ -24,12 +24,16 @@ import System.Posix.Files
 import System.Posix.Directory
 import System.Time
 
-import Version
-import Log
 import Game
+import Log
+import Rating
+import Version
 
 state_path :: FilePath
 state_path = "imcsd"
+
+version_path :: FilePath
+version_path = state_path </> "VERSION"
 
 private_path :: FilePath
 private_path = state_path </> "private"
@@ -63,20 +67,54 @@ data GamePost = GameResv {
 
 data PWFEntry = PWFEntry {
       pwf_entry_name :: String,
-      pwf_entry_password :: String }
+      pwf_entry_password :: String,
+      pwf_entry_rating :: Rating }
 
 data ServiceState = ServiceState {
       service_state_game_id :: Int,
       service_state_game_list :: [GamePost],
-      service_state_pwf :: [PWFEntry]}
+      service_state_pwf :: [PWFEntry] }
 
 initServiceDir :: IO ()
 initServiceDir = do
-  createDirectory state_path 0o755
-  createDirectory private_path 0o700
-  createDirectory log_path 0o755
-  h <- openFile pwf_path AppendMode
-  hClose h
+  version <- read_versionf
+  case version of
+    "" -> do
+      game_id <- read_game_id
+      case game_id of
+        1 -> fresh
+        _ -> to_v2_0
+    _ -> return ()
+  write_versionf
+  where
+    to_v2_0 = do
+      old_pwf <- read_v1_4_pwf
+      let new_pwf = map to_pwe old_pwf
+      write_pwf new_pwf
+      where
+        to_pwe (name, password) = PWFEntry name password baseRating
+    fresh = do
+      createDirectory state_path 0o755
+      createDirectory private_path 0o700
+      createDirectory log_path 0o755
+      h <- openFile pwf_path AppendMode
+      hClose h
+
+read_versionf :: IO String
+read_versionf = catch read_version_file give_up where
+    read_version_file = do
+      vh <- openFile version_path ReadMode
+      l <- hGetLine vh
+      hClose vh
+      return $ unwords $ words l
+    give_up _ = do
+      return ""
+
+write_versionf :: IO ()
+write_versionf = do
+  vh <- openFile version_path WriteMode
+  hPutStrLn vh version
+  hClose vh
 
 write_game_id :: Int -> IO ()
 write_game_id game_id = do
@@ -87,12 +125,22 @@ write_game_id game_id = do
 write_pwf :: [PWFEntry] -> IO ()
 write_pwf pwf = do
   h <- openFile pwf_tmp_path WriteMode
-  let write_pwfe (PWFEntry name password) =
-        hPutStrLn h $ name ++ " " ++ password
+  let write_pwfe (PWFEntry name password rating) =
+        hPutStrLn h $ name ++ " " ++ password ++ " " ++ show rating
   mapM_ write_pwfe pwf
   hClose h
   removeLink pwf_path
   rename pwf_tmp_path pwf_path
+
+read_v1_4_pwf :: IO [(String, String)]
+read_v1_4_pwf = do
+  h <- openFile pwf_path ReadMode
+  s <- hGetContents h
+  return $ map (make_pwfe . words) $ lines s
+  where
+    make_pwfe [name, password] =
+        (name, password)
+    make_pwfe _ = error "bad password file format: exiting"
 
 read_pwf :: IO [PWFEntry]
 read_pwf = do
@@ -100,27 +148,29 @@ read_pwf = do
   s <- hGetContents h
   return $ map (make_pwfe . words) $ lines s
   where
-    make_pwfe [name, password] =
-        PWFEntry name password
+    make_pwfe [name, password, rating] =
+        PWFEntry name password (read rating)
     make_pwfe _ = error "bad password file format: exiting"
+
+read_game_id :: IO Int
+read_game_id = catch read_game_file give_up where
+    read_game_file = do
+      idh <- openFile game_id_path ReadMode
+      l <- hGetLine idh
+      hClose idh
+      return $ read l
+    give_up _ = do
+      write_game_id 1
+      return 1
 
 initServiceState :: IO ServiceState
 initServiceState = do
+  next_game_id <- read_game_id
   pwf <- read_pwf
-  next_game_id <- catch do_game_id new_game_id
   return $ ServiceState {
     service_state_game_id = next_game_id,
     service_state_game_list = [],
     service_state_pwf = pwf }
-  where
-    do_game_id = do
-      idh <- openFile game_id_path ReadMode
-      l <- hGetLine idh
-      hClose idh
-      return $ read l :: IO Int
-    new_game_id _ = do
-      write_game_id 1
-      return 1
 
 parse_int :: String -> Maybe Int
 parse_int "" = Nothing
@@ -137,7 +187,7 @@ while b a = do
 
 pw_lookup :: ServiceState -> String -> Maybe String
 pw_lookup ss name = lookup name pwf where
-    pwf = map (\(PWFEntry n p) -> (n, p)) $ service_state_pwf ss
+    pwf = map (\(PWFEntry n p _) -> (n, p)) $ service_state_pwf ss
 
 doCommands :: (Handle, String) -> MVar ServiceState -> LogIO ()
 doCommands (h, client_id) state = do
@@ -192,7 +242,7 @@ doCommands (h, client_id) state = do
              logMsg $ "registering client " ++ client_id ++
                       " as user " ++ name
              let ServiceState game_id game_list pwf = ss
-             let pwfe = PWFEntry name password
+             let pwfe = PWFEntry name password baseRating
              let pwf' = pwf ++ [pwfe]
              let ss' = ServiceState game_id game_list pwf'
              liftIO $ do
@@ -217,8 +267,8 @@ doCommands (h, client_id) state = do
                 logMsg $ "changing password for client " ++ client_id ++
                          " user " ++ my_name
                 let ServiceState game_id game_list pwf = ss
-                let newpass e@(PWFEntry n _)
-                     | n == my_name = PWFEntry n password
+                let newpass e@(PWFEntry n _ rating)
+                     | n == my_name = PWFEntry n password rating
                      | otherwise = e
                 let pwf' = map newpass pwf
                 let ss' = ServiceState game_id game_list pwf'
