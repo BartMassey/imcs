@@ -93,10 +93,10 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
             'W' -> report "232" "B wins on resignation"
           return Nothing
         IllegalMove -> do
-          alsoLogMsg this_h ("X illegal move")
+          alsoLogMsg this_h ("- illegal move")
           return (Just (problem, time'))
         InvalidMove -> do
-          alsoLogMsg this_h ("X invalid move")
+          alsoLogMsg this_h ("- invalid move")
           return (Just (problem, time'))
         GoodMove mov -> do
           let (captured, stop, problem') = runST (execute_move mov)
