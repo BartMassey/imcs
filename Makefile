@@ -6,8 +6,8 @@
 
 HC = ghc
 HCFLAGS = # -O2 # -prof -auto-all # -debug # -Wall 
-SRCS = Board.hs Game.hs IMCS.hs Log.hs Service.hs \
-       State.hs Version.hs
+SRCS = Board.hs Game.hs IMCS.hs Log.hs Rating.hs \
+       Service.hs State.hs Version.hs
 
 imcs: $(SRCS)
 	$(HC) $(HCFLAGS) -o imcs --make IMCS.hs
