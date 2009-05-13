@@ -427,8 +427,8 @@ doCommands (h, client_id) state = do
             ServiceState game_id game_list pwf <- liftIO $ takeMVar state
             case find_game game_list of
               Nothing -> liftIO $ do
-                hPutStrLn h $ "408 no such game"
                 putMVar state $ ServiceState game_id game_list pwf
+                hPutStrLn h $ "408 no such game"
               Just (other_name, wakeup, game_list') ->  do
                 logMsg $ "client " ++ client_id ++
                          " accepts " ++ show other_name
@@ -438,10 +438,11 @@ doCommands (h, client_id) state = do
                   hPutStrLn h "103 accepting offer"
                   writeChan wakeup $ Wakeup my_name client_id h
             where
-              find_game game_list = go [] game_list where
-                go _ [] = Nothing
-                go first this@(GameResv game_id' other_name _ _ _ wakeup : rest)
-                   | game_id' == ask_id =
-                       Just (other_name, wakeup, first ++ rest)
-                   | otherwise = go (first ++ this) rest
+              find_game game_list =
+                  case partition ((== ask_id) . game_resv_game_id) game_list of
+                    ([GameResv game_id' other_name _ _ _ wakeup], rest) ->
+                        Just (other_name, wakeup, rest)
+                    ([], _) -> Nothing
+                    _ -> error $ "internal error: multiple games " ++
+                                 "with same id in list"
       _ -> liftIO $ hPutStrLn h $ "501 unknown command"
