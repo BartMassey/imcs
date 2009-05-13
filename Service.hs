@@ -57,10 +57,12 @@ log_path = state_path </> "log"
 default_time :: Maybe Int
 default_time = Just 300000
 
-data Wakeup = Wakeup {
+data Wakeup =
+    Wakeup {
       wakeup_name :: String,
       wakeup_client_id :: String,
       wakeup_handle :: Handle }
+  | Nevermind
 
 data GamePost = GameResv {
       game_resv_game_id :: Int,
@@ -200,7 +202,22 @@ pw_lookup ss name = lookup name pwf where
     pwf = map (\(PWFEntry n p r) -> (n, (p, r))) $ service_state_pwf ss
 
 doCommands :: (Handle, String) -> MVar ServiceState -> LogIO ()
-doCommands (h, client_id) state = do
+doCommands (h, my_client_id) state = do
+  liftIO $ do
+    ServiceState my_game_id game_list pwf <- takeMVar state
+    game_list' <- filterM close_redundant game_list
+    let ss' = ServiceState my_game_id game_list' pwf
+    putMVar state ss'
+  serve h my_client_id state
+  where
+    close_redundant gr@(GameResv _ _ client_id _ _ wakeup)
+        | client_id == my_client_id = do
+            writeChan wakeup Nevermind
+            return False
+        | otherwise = return True
+
+serve :: Handle -> String -> MVar ServiceState -> LogIO ()
+serve h client_id state = do
   liftIO $ hPutStrLn h $ "100 imcs " ++ version
   continue <- liftIO $ newIORef True
   me <- liftIO $ newIORef Nothing
@@ -332,7 +349,6 @@ doCommands (h, client_id) state = do
           (Just my_name, True) -> do
             logMsg $ "client " ++ client_id ++ " offers game as " ++ color
             wakeup <- liftIO $ newChan
-            liftIO $ writeIORef continue False
             ss <- liftIO $ takeMVar state
             let ServiceState game_id game_list pwf = ss
             let my_rating =
@@ -350,68 +366,73 @@ doCommands (h, client_id) state = do
               putMVar state service_state'
               hPutStrLn h $ "101 game " ++ show game_id ++
                             " waiting for offer acceptance"
-            Wakeup other_name other_id other_h <- liftIO $ readChan wakeup
-            liftIO $ hPutStrLn h "102 received acceptance"
-            let run_game = do
-                let game_desc = show game_id ++ ": " ++
-                                my_name ++ "(" ++ client_id ++
-                                ", " ++ color ++ ") vs " ++
-                                other_name ++ "(" ++ other_id ++ ")"
-                logMsg $ "game " ++ game_desc ++ " begins"
-                let ((p1, p1_name), (p2, p2_name)) = 
-                      case head color of
-                        'W' -> (((h, default_time), my_name),
-                                ((other_h, default_time), other_name))
-                        'B' -> (((other_h, default_time), other_name),
-                                ((h, default_time), my_name))
-                        _   -> error "internal error: bad color"
-                let path = log_path </> show game_id
-                game_log <- liftIO $ openFile path WriteMode
-                liftIO $ withLogDo game_log $ do
-                  time <- liftIO $ getClockTime
-                  let date = calendarTimeToString $ toUTCTime time
-                  logMsg game_desc
-                  logMsg date
-                  score <- doGame p1 p2
-                  liftIO $ do
-                    p1_rating <- lookup_rating p1_name
-                    p2_rating <- lookup_rating p2_name
-                    update_rating p1_name p1_rating p2_rating score
-                    update_rating p2_name p2_rating p1_rating (-score)
-                    hClose h
-                    hClose other_h
-                  logMsg $ "client " ++ client_id ++ " closes"
-                  where
-                    lookup_rating name = do
-                      ss <- readMVar state
-                      case pw_lookup ss name of
-                        Just (_, rating) -> return rating
-                        --- XXX should never happen
-                        Nothing -> return baseRating
-                    update_rating name ra rb s = do
-                      let ra' = updateRating ra rb s
-                      ss <- takeMVar state
-                      let ServiceState game_id game_list pwf = ss
-                      let newpass e@(PWFEntry n password _)
-                            | n == name = PWFEntry n password ra'
-                            | otherwise = e
-                      let pwf' = map newpass pwf
-                      write_pwf pwf'
-                      let ss' = ServiceState game_id game_list pwf'
-                      putMVar state ss'
-            let clean_up e = do
-                logMsg $ "game " ++ client_id ++
-                         " incurs IO error: " ++ show e
-                liftIO $ do
-                  close_it h
-                  close_it other_h
-                where
-                  close_it h = 
-                    catch (do
-                              hPutStrLn h "420 fatal IO error: exiting"
-                              hClose h)
-                          (\_ -> return ())
-            catchLogIO run_game clean_up
+            w <- liftIO $ readChan wakeup
+            case w of
+              Wakeup other_name other_id other_h -> do
+                liftIO $ hPutStrLn h "102 received acceptance"
+                liftIO $ writeIORef continue False
+                let run_game = do
+                    let game_desc = show game_id ++ ": " ++
+                                    my_name ++ "(" ++ client_id ++
+                                    ", " ++ color ++ ") vs " ++
+                                    other_name ++ "(" ++ other_id ++ ")"
+                    logMsg $ "game " ++ game_desc ++ " begins"
+                    let ((p1, p1_name), (p2, p2_name)) = 
+                          case head color of
+                            'W' -> (((h, default_time), my_name),
+                                    ((other_h, default_time), other_name))
+                            'B' -> (((other_h, default_time), other_name),
+                                    ((h, default_time), my_name))
+                            _   -> error "internal error: bad color"
+                    let path = log_path </> show game_id
+                    game_log <- liftIO $ openFile path WriteMode
+                    liftIO $ withLogDo game_log $ do
+                      time <- liftIO $ getClockTime
+                      let date = calendarTimeToString $ toUTCTime time
+                      logMsg game_desc
+                      logMsg date
+                      score <- doGame p1 p2
+                      liftIO $ do
+                        p1_rating <- lookup_rating p1_name
+                        p2_rating <- lookup_rating p2_name
+                        update_rating p1_name p1_rating p2_rating score
+                        update_rating p2_name p2_rating p1_rating (-score)
+                        hClose h
+                        hClose other_h
+                      logMsg $ "client " ++ client_id ++ " closes"
+                      where
+                        lookup_rating name = do
+                          ss <- readMVar state
+                          case pw_lookup ss name of
+                            Just (_, rating) -> return rating
+                            --- XXX should never happen
+                            Nothing -> return baseRating
+                        update_rating name ra rb s = do
+                          let ra' = updateRating ra rb s
+                          ss <- takeMVar state
+                          let ServiceState game_id game_list pwf = ss
+                          let newpass e@(PWFEntry n password _)
+                                | n == name = PWFEntry n password ra'
+                                | otherwise = e
+                          let pwf' = map newpass pwf
+                          write_pwf pwf'
+                          let ss' = ServiceState game_id game_list pwf'
+                          putMVar state ss'
+                let clean_up e = do
+                    logMsg $ "game " ++ client_id ++
+                             " incurs IO error: " ++ show e
+                    liftIO $ do
+                      close_it h
+                      close_it other_h
+                    where
+                      close_it h = 
+                        catch (do
+                                  hPutStrLn h "420 fatal IO error: exiting"
+                                  hClose h)
+                              (\_ -> return ())
+                catchLogIO run_game clean_up
+              Nevermind ->
+                alsoLogMsg h "421 offer countermanded"
         where
           valid_color "W" = True
           valid_color "B" = True

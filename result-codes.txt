@@ -30,5 +30,6 @@ itself.
 407 bad game id
 408 no such game
 420 fatal IO error
+421 offer countermanded
 500 you do not exist
 501 unknown command
