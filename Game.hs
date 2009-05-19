@@ -96,7 +96,7 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
       case movt of
         Resign -> do
           let loser = (showSide . problemToMove) problem
-	  case loser of
+          case loser of
             'B' -> do
               report "231" "W wins on resignation"
               return $ Right 1
@@ -111,6 +111,9 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
           return (Left (problem, time'))
         GoodMove mov -> do
           let (captured, stop, problem') = runST (execute_move mov)
+          let move_string = showMove mov
+          logMsg move_string
+          liftIO $ hPutStrLn other_h $ "! " ++ move_string
           case stop of
             True -> do
               case captured of
@@ -124,9 +127,6 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
                   report "230" "draw"
                   return $ Right 0
             False -> do
-              let move_string = showMove mov
-              logMsg move_string
-              liftIO $ hPutStrLn other_h $ "! " ++ move_string
               return (Left (problem', start_clock time'))
   where
     execute_move mov = do

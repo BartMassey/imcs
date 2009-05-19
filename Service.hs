@@ -87,7 +87,7 @@ initServiceDir = do
   fversion <- read_versionf
   case fversion of
     "" -> do
-      game_id <- read_game_id
+      game_id <- catch read_game_id (\_ -> return 1)
       case game_id of
         1 -> fresh
         _ -> to_v2_0
