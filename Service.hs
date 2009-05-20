@@ -87,7 +87,7 @@ initServiceDir = do
   fversion <- read_versionf
   case fversion of
     "" -> do
-      game_id <- catch read_game_id (\_ -> return 1)
+      game_id <- read_game_id
       case game_id of
         1 -> fresh
         _ -> to_v2_0
@@ -167,7 +167,6 @@ read_game_id = catch read_game_file give_up where
       hClose idh
       return $ read l
     give_up _ = do
-      write_game_id 1
       return 1
 
 initServiceState :: IO ServiceState
