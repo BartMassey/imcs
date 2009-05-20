@@ -201,22 +201,7 @@ pw_lookup ss name = lookup name pwf where
     pwf = map (\(PWFEntry n p r) -> (n, (p, r))) $ service_state_pwf ss
 
 doCommands :: (Handle, String) -> MVar ServiceState -> LogIO ()
-doCommands (h, my_client_id) state = do
-  liftIO $ do
-    ServiceState my_game_id game_list pwf <- takeMVar state
-    game_list' <- filterM close_redundant game_list
-    let ss' = ServiceState my_game_id game_list' pwf
-    putMVar state ss'
-  serve h my_client_id state
-  where
-    close_redundant gr@(GameResv _ _ client_id _ _ wakeup)
-        | client_id == my_client_id = do
-            writeChan wakeup Nevermind
-            return False
-        | otherwise = return True
-
-serve :: Handle -> String -> MVar ServiceState -> LogIO ()
-serve h client_id state = do
+doCommands (h, client_id) state = do
   liftIO $ hPutStrLn h $ "100 imcs " ++ version
   continue <- liftIO $ newIORef True
   me <- liftIO $ newIORef Nothing
