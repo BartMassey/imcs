@@ -136,10 +136,12 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
       problem' <- snapshotState state'
       return (capture undo, stop, problem')
     report code msg = do
-      liftIO $ hPutStrLn this_h $ "= " ++ msg
-      liftIO $ hPutStrLn other_h $ "= " ++ msg
-      alsoLogMsg this_h $ code ++ " " ++ msg
-      liftIO $ hPutStrLn other_h $ code ++ " " ++ msg
+      liftIO $ do
+        hPutStrLn this_h $ "= " ++ msg
+        hPutStrLn other_h $ "= " ++ msg
+        hPutStrLn this_h $ code ++ " " ++ msg
+        hPutStrLn other_h $ code ++ " " ++ msg
+      logMsg $ code ++ " " ++ msg
 
 run_game :: Problem -> TCState -> TCState -> LogIO Int
 run_game problem (h, t) other = do
