@@ -37,8 +37,8 @@ argd = [ Arg { argIndex = OptionPort,
          Arg { argIndex = OptionInit,
                argName = Just "init",
                argAbbr = Nothing,
-               argData = Nothing,
-               argDesc = "Initialize server directories, then exit" } ]
+               argData = argDataRequired "admin-pw" ArgtypeString,
+               argDesc = "Setup or upgrade server" } ]
 
 master_init :: Int -> LogIO Socket
 master_init port_num = do
@@ -65,9 +65,11 @@ run_service port = do
 main :: IO ()
 main = do
   a <- parseArgsIO ArgsComplete argd
+  let port = fromJust (getArgInt a OptionPort)
   case gotArg a OptionInit of
-     True ->
-       initServiceDir
-     False -> do
-       let port = fromJust (getArgInt a OptionPort)
+     True -> do
+       let admin_pw = fromJust (getArgString a OptionInit)
+       initService port admin_pw
+     False ->
        withSocketsDo $ withLogDo stdout (run_service port)
+
