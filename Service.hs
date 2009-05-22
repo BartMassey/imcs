@@ -69,7 +69,6 @@ data GamePost = GameResv {
       game_resv_name :: String,
       game_resv_client_id :: String,
       game_resv_side :: Char,
-      game_resv_rating :: Rating,
       game_resv_wakeup :: Chan Wakeup }
 
 data PWFEntry = PWFEntry {
@@ -200,6 +199,18 @@ pw_lookup :: ServiceState -> String -> Maybe (String, Rating)
 pw_lookup ss name = lookup name pwf where
     pwf = map (\(PWFEntry n p r) -> (n, (p, r))) $ service_state_pwf ss
 
+game_lookup :: [GamePost] -> Int
+            -> LogIO (Either String (String, Chan Wakeup, [GamePost]))
+game_lookup game_list game_id = do
+  case partition ((== game_id) . game_resv_game_id) game_list of
+    ([GameResv _ other_name _ _ wakeup], rest) ->
+        return $ Right (other_name, wakeup, rest)
+    ([], _) -> 
+        return $ Left "408 no such game"
+    _ ->
+        return $ Left "499 internal error: multiple games with same id in list"
+
+
 doCommands :: (Handle, String) -> MVar ServiceState -> LogIO ()
 doCommands (h, client_id) state = do
   liftIO $ hPutStrLn h $ "100 imcs " ++ version
@@ -291,16 +302,19 @@ doCommands (h, client_id) state = do
                 logMsg $ "changed password for client " ++ client_id ++
                          " user " ++ my_name
       ["list"] -> liftIO $ do
-        ServiceState _ game_list _ <- readMVar state
+        ss@(ServiceState _ game_list _) <- readMVar state
         hPutStrLn h "211 available games"
+        let lookup_rating other_name =
+                case pw_lookup ss other_name of
+                  Nothing -> "?"
+                  Just (_, r) -> show r
+        let output_game (GameResv game_id other_name _ color _) =
+                hPutStrLn h $ " " ++ show game_id ++
+                              " " ++ other_name ++
+                              " " ++ [color] ++
+                              " " ++ lookup_rating other_name
         mapM_ output_game game_list
         hPutStrLn h "."
-        where
-          output_game (GameResv game_id other_name _ color rating _) =
-            hPutStrLn h $ " " ++ show game_id ++
-                          " " ++ other_name ++
-                          " " ++ [color] ++
-                          " " ++ show rating
       ["ratings"] -> liftIO $ do
         ServiceState _ _ pwf <- readMVar state
         maybe_my_name <- readIORef me
@@ -342,8 +356,7 @@ doCommands (h, client_id) state = do
                     --- XXX shouldn't normally happen
                     Nothing -> baseRating
             let new_game =
-                  GameResv game_id my_name client_id (head color)
-                           my_rating wakeup
+                  GameResv game_id my_name client_id (head color) wakeup
             let service_state' =
                   ServiceState (game_id + 1) (game_list ++ [new_game]) pwf
             liftIO $ do
@@ -431,12 +444,13 @@ doCommands (h, client_id) state = do
           (Nothing, _) ->
             liftIO $ hPutStrLn h "407 bad game id"
           (Just ask_id, Just my_name) -> do
-            ServiceState game_id game_list pwf <- liftIO $ takeMVar state
-            case find_game game_list of
-              Nothing -> liftIO $ do
-                putMVar state $ ServiceState game_id game_list pwf
-                hPutStrLn h $ "408 no such game"
-              Just (other_name, wakeup, game_list') ->  do
+            ss@(ServiceState game_id game_list pwf) <- liftIO $ takeMVar state
+            game <- game_lookup game_list ask_id
+            case game of
+              Left error -> do
+                liftIO $ putMVar state ss
+                alsoLogMsg h error
+              Right (other_name, wakeup, game_list') ->  do
                 liftIO $ putMVar state $ ServiceState game_id game_list' pwf
                 logMsg $ "client " ++ client_id ++
                          " accepts " ++ show other_name
@@ -444,14 +458,6 @@ doCommands (h, client_id) state = do
                   writeIORef continue False
                   hPutStrLn h "103 accepting offer"
                   writeChan wakeup $ Wakeup my_name client_id h
-            where
-              find_game game_list =
-                  case partition ((== ask_id) . game_resv_game_id) game_list of
-                    ([GameResv game_id' other_name _ _ _ wakeup], rest) ->
-                        Just (other_name, wakeup, rest)
-                    ([], _) -> Nothing
-                    _ -> error $ "internal error: multiple games " ++
-                                 "with same id in list"
       ["clean"] -> do
         maybe_my_name <- liftIO $ readIORef me
         case maybe_my_name of

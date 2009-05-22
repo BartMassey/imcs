@@ -32,5 +32,6 @@ itself.
 408 no such game
 420 fatal IO error
 421 offer countermanded
+499 internal error: <reason>
 500 you do not exist
 501 unknown command
