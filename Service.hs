@@ -76,7 +76,7 @@ data GamePost =
       in_progress_game_id :: Int,
       in_progress_name_white :: String,
       in_progress_name_black :: String,
-      in_progress_wakeup :: Chan () }
+      in_progress_wakeup :: MVar () }
 
 data PWFEntry = PWFEntry {
       pwf_entry_name :: String,
@@ -434,7 +434,7 @@ doCommands (h, client_id) state = do
                         'B' -> (((other_h, default_time), other_name),
                                 ((h, default_time), my_name))
                         _   -> error "internal error: bad color"
-                wchan <- liftIO $ newChan
+                wchan <- liftIO $ newEmptyMVar
                 let ip = InProgress game_id p1_name p2_name wchan
                 (ServiceState game_id'' game_list pwf) <- liftIO $ takeMVar state
                 let gl' = game_list ++ [ip]
@@ -498,7 +498,7 @@ doCommands (h, client_id) state = do
                     exclude_me _ = True
                 let gl' = filter exclude_me game_list
                 liftIO $ putMVar state (ServiceState game_id'' gl' pwf)
-                liftIO $ writeChan wchan ()
+                liftIO $ putMVar wchan ()
               Nevermind ->
                 alsoLogMsg h "421 offer countermanded"
         where
@@ -541,21 +541,30 @@ doCommands (h, client_id) state = do
             liftIO $ hPutStrLn h $ "204 " ++ show (length my_list) ++
                                    " games cleaned"
             where
-              my_game gr = game_resv_name gr == my_name
+              my_game (GameResv { game_resv_name = name })
+                  | name == my_name = True
+              my_game _ = False
               close_game gr = writeChan (game_resv_wakeup gr) Nevermind
       ["stop"] -> do
         maybe_my_name <- liftIO $ readIORef me
         case maybe_my_name of
           Nothing -> liftIO $ hPutStrLn h $
                      "406 must set name first using me command"
-          Just "admin" -> liftIO $ do
-            hPutStrLn h "205 server stopping, goodbye"
-            ss@(ServiceState game_id game_list pwf) <- takeMVar state
-            let ss' = ServiceState game_id [] pwf
-            putMVar state ss'
-            mapM_ close_game game_list
-            writeIORef continue False
+          Just "admin" -> do
+            logMsg $ "stopping server for " ++ client_id
+            liftIO $ do
+              hPutStrLn h "205 server stopping, goodbye"
+              ss@(ServiceState game_id game_list pwf) <- takeMVar state
+              let ss' = ServiceState game_id [] pwf
+              mapM_ close_game game_list
+              writeIORef continue False
+              putMVar state ss'
+              hClose h
+            exitSuccessLogIO
             where
-              close_game gr = writeChan (game_resv_wakeup gr) Nevermind
+              close_game (GameResv { game_resv_wakeup = w }) =
+                  writeChan w Nevermind
+              close_game (InProgress { in_progress_wakeup = w }) = do
+                  readMVar w
           Just _ -> liftIO $ hPutStrLn h "502 admin only"
       _ -> liftIO $ hPutStrLn h $ "501 unknown command"
