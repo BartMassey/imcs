@@ -65,12 +65,18 @@ data Wakeup =
       wakeup_handle :: Handle }
   | Nevermind
 
-data GamePost = GameResv {
+data GamePost =
+    GameResv {
       game_resv_game_id :: Int,
       game_resv_name :: String,
       game_resv_client_id :: String,
       game_resv_side :: Char,
       game_resv_wakeup :: Chan Wakeup }
+  | InProgress {
+      in_progress_game_id :: Int,
+      in_progress_name_white :: String,
+      in_progress_name_black :: String,
+      in_progress_wakeup :: Chan () }
 
 data PWFEntry = PWFEntry {
       pwf_entry_name :: String,
@@ -86,15 +92,19 @@ initService :: Int -> String -> IO ()
 initService port admin_pw = do
   fversion <- read_versionf
   case fversion of
-    "2.1" -> do
+    "2.2" -> do
       putStrLn $ "using existing version " ++ fversion
       terminate_existing_server
+    "2.1" -> do
+      terminate_existing_server
+      to_v2_2
     "2.0" -> to_v2_1
     "" -> do
       to_v2_0
       to_v2_1
     v -> error $ "unknown version " ++ v
   where
+    to_v2_2 = write_versionf
     to_v2_1 = write_versionf
     to_v2_0 = do
        game_id <- read_game_id
@@ -239,14 +249,16 @@ pw_lookup ss name = lookup name pwf where
 game_lookup :: [GamePost] -> Int
             -> LogIO (Either String (String, Chan Wakeup, [GamePost]))
 game_lookup game_list game_id = do
-  case partition ((== game_id) . game_resv_game_id) game_list of
+  case partition waiting_game game_list of
     ([GameResv _ other_name _ _ wakeup], rest) ->
         return $ Right (other_name, wakeup, rest)
     ([], _) -> 
         return $ Left "408 no such game"
     _ ->
         return $ Left "499 internal error: multiple games with same id in list"
-
+  where
+    waiting_game (GameResv game_id' _ _ _ _) | game_id' == game_id = True
+    waiting_game _ = False
 
 doCommands :: (Handle, String) -> MVar ServiceState -> LogIO ()
 doCommands (h, client_id) state = do
@@ -349,7 +361,15 @@ doCommands (h, client_id) state = do
                 hPutStrLn h $ " " ++ show game_id ++
                               " " ++ other_name ++
                               " " ++ [color] ++
-                              " " ++ lookup_rating other_name
+                              " " ++ lookup_rating other_name ++
+                              " [offer]"
+            output_game (InProgress game_id name_white name_black _) =
+                hPutStrLn h $ " " ++ show game_id ++
+                              " " ++ name_white ++
+                              " " ++ name_black ++
+                              " (" ++ lookup_rating name_white ++ "/" ++
+                                   lookup_rating name_black ++ ") " ++
+                              " [in-progress]"
         mapM_ output_game game_list
         hPutStrLn h "."
       ["ratings"] -> liftIO $ do
@@ -407,19 +427,24 @@ doCommands (h, client_id) state = do
               Wakeup other_name other_id other_h -> do
                 liftIO $ hPutStrLn h "102 received acceptance"
                 liftIO $ writeIORef continue False
+                let ((p1, p1_name), (p2, p2_name)) = 
+                      case head color of
+                        'W' -> (((h, default_time), my_name),
+                                ((other_h, default_time), other_name))
+                        'B' -> (((other_h, default_time), other_name),
+                                ((h, default_time), my_name))
+                        _   -> error "internal error: bad color"
+                wchan <- liftIO $ newChan
+                let ip = InProgress game_id p1_name p2_name wchan
+                (ServiceState game_id'' game_list pwf) <- liftIO $ takeMVar state
+                let gl' = game_list ++ [ip]
+                liftIO $ putMVar state (ServiceState game_id'' gl' pwf)
                 let run_game = do
                     let game_desc = show game_id ++ ": " ++
                                     my_name ++ "(" ++ client_id ++
                                     ", " ++ color ++ ") vs " ++
                                     other_name ++ "(" ++ other_id ++ ")"
                     logMsg $ "game " ++ game_desc ++ " begins"
-                    let ((p1, p1_name), (p2, p2_name)) = 
-                          case head color of
-                            'W' -> (((h, default_time), my_name),
-                                    ((other_h, default_time), other_name))
-                            'B' -> (((other_h, default_time), other_name),
-                                    ((h, default_time), my_name))
-                            _   -> error "internal error: bad color"
                     let path = log_path </> show game_id
                     game_log <- liftIO $ openFile path WriteMode
                     liftIO $ withLogDo game_log $ do
@@ -446,12 +471,12 @@ doCommands (h, client_id) state = do
                         update_rating name ra rb s = do
                           let ra' = updateRating ra rb s
                           ss <- takeMVar state
-                          let ServiceState game_id game_list pwf = ss
+                          let ServiceState game_id'' game_list pwf = ss
                           let newpass e@(PWFEntry n password _)
                                 | n == name = PWFEntry n password ra'
                                 | otherwise = e
                           let pwf' = map newpass pwf
-                          let ss' = ServiceState game_id game_list pwf'
+                          let ss' = ServiceState game_id'' game_list pwf'
                           write_pwf pwf'   --- XXX failure will hang server
                           putMVar state ss'
                 let clean_up e = do
@@ -467,6 +492,13 @@ doCommands (h, client_id) state = do
                                   hClose h)
                               (\_ -> return ())
                 catchLogIO run_game clean_up
+                (ServiceState game_id'' game_list pwf) <- liftIO $ takeMVar state
+                let exclude_me (InProgress game_id' _ _ _)
+                       | game_id == game_id' = False
+                    exclude_me _ = True
+                let gl' = filter exclude_me game_list
+                liftIO $ putMVar state (ServiceState game_id'' gl' pwf)
+                liftIO $ writeChan wchan ()
               Nevermind ->
                 alsoLogMsg h "421 offer countermanded"
         where
