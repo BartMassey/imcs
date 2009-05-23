@@ -37,7 +37,7 @@ argd = [ Arg { argIndex = OptionPort,
          Arg { argIndex = OptionInit,
                argName = Just "init",
                argAbbr = Nothing,
-               argData = argDataRequired "admin-pw" ArgtypeString,
+               argData = argDataOptional "admin-pw" ArgtypeString,
                argDesc = "Setup or upgrade server" } ]
 
 master_init :: Int -> LogIO Socket

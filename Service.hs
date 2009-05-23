@@ -6,7 +6,7 @@
 
 module Service (
   ServiceState,
-  initServiceDir,
+  initService,
   initServiceState,
   doCommands) where
 
@@ -14,7 +14,7 @@ import Prelude hiding (catch)
 
 import Control.Concurrent.Chan
 import Control.Concurrent.MVar
-import Control.Exception (evaluate)
+import Control.Exception (evaluate, throw)
 import Control.Monad
 import Data.Char
 import Data.IORef
@@ -95,39 +95,60 @@ initService port admin_pw = do
       to_v2_1
     v -> error $ "unknown version " ++ v
   where
-   to_v2_1 = write_versionf
-   to_v2_0 = do
-      game_id <- read_game_id
-      case game_id of
-        1 -> to_v2_0_from_v1_0
-        _ -> to_v2_0_from_v1_4
-      write_versionf
-   to_v2_0_from_v1_0 = do
-      createDirectory state_path 0o755
-      createDirectory private_path 0o700
-      createDirectory log_path 0o755
-      h <- openFile pwf_path AppendMode
+    to_v2_1 = write_versionf
+    to_v2_0 = do
+       game_id <- read_game_id
+       case game_id of
+         1 -> to_v2_0_from_v1_0
+         _ -> to_v2_0_from_v1_4
+       write_versionf
+    to_v2_0_from_v1_0 = do
+       createDirectory state_path 0o755
+       createDirectory private_path 0o700
+       createDirectory log_path 0o755
+       h <- openFile pwf_path AppendMode
+       hClose h
+       write_versionf
+    to_v2_0_from_v1_4 = do
+       old_pwf <- read_v1_4_pwf
+       let new_pwf = map to_pwe old_pwf
+       write_pwf new_pwf
+       where
+         to_pwe (name, password) = PWFEntry name password baseRating
+    terminate_existing_server = do
+      let try_to_connect =
+              connectTo "127.0.0.1" $ PortNumber $ fromIntegral port
+      let fail_to_connect e = do
+              putStrLn $ "could not connect to localhost:" ++ show port ++
+                         " : " ++ show e
+              throw e
+      h <- catch try_to_connect fail_to_connect
+      let expect code failure = do
+            putStrLn $ "expecting " ++ code
+            let process_line = do
+                  line <- hGetLine h
+                  putStrLn $ "got " ++ line
+                  case words line of
+                    (code' : _) | code == code' -> return ()
+                    _ ->  do 
+                      let msg = failure ++ ": " ++ line
+                      let e = mkIOError userErrorType msg (Just h) Nothing
+                      throw e
+            let io_fail e = do
+                  putStrLn $ "IO Error: exiting"
+                  throw e
+            catch process_line io_fail
+      let send s = do
+            putStrLn $ "sending " ++ s
+            hPutStrLn h s
+            hFlush h
+      expect "100" "unexpected server hello"
+      send $ "me admin " ++ admin_pw
+      expect "201" "could not become admin"
+      send "stop"
+      expect "205" "server cannot or would not stop"
       hClose h
-      write_versionf
-   to_v2_0_from_v1_4 = do
-      old_pwf <- read_v1_4_pwf
-      let new_pwf = map to_pwe old_pwf
-      write_pwf new_pwf
-      where
-        to_pwe (name, password) = PWFEntry name password baseRating
-   terminate_existing_server = do
-      catch do_terminate fail_to_terminate
-      where
-        do_terminate = do
-          h <- connectTo "localhost" $ fromIntegral port
-          hPutStrLn h $ "stop " ++ admin_pw
-          response <- hGetLine h
-          case words response of
-            ("205" : _) -> return ()
-            _ -> putStrLn response
-          hClose h
-        fail_to_terminate =
-          putStrLn $ "could not connect to localhost:" ++ port
+      return ()
 
 read_versionf :: IO String
 read_versionf = catch read_version_file give_up where
