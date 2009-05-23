@@ -556,9 +556,8 @@ doCommands (h, client_id) state = do
               hPutStrLn h "205 server stopping, goodbye"
               ss@(ServiceState game_id game_list pwf) <- takeMVar state
               let ss' = ServiceState game_id [] pwf
-              mapM_ close_game game_list
-              writeIORef continue False
               putMVar state ss'
+              mapM_ close_game game_list
               hClose h
             exitSuccessLogIO
             where
