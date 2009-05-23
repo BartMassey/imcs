@@ -232,13 +232,6 @@ parse_int s
     | length s < 9 && all isDigit s = Just (read s)
     | otherwise = Nothing
 
-while :: IORef Bool -> LogIO () -> LogIO ()
-while b a = do
-  cond <- liftIO $ readIORef b
-  case cond of
-    False -> return ()
-    True -> a >> while b a
-
 pw_lookup :: ServiceState -> String -> Maybe (String, Rating)
 pw_lookup ss name = lookup name pwf where
     pwf = map (\(PWFEntry n p r) -> (n, (p, r))) $ service_state_pwf ss
@@ -260,7 +253,7 @@ doCommands (h, client_id) state = do
   liftIO $ hPutStrLn h $ "100 imcs " ++ version
   continue <- liftIO $ newIORef True
   me <- liftIO $ newIORef Nothing
-  while continue $ do
+  whileLogIO continue $ do
     line <- liftIO $ hGetLine h
     case words line of
       [] -> do
@@ -518,4 +511,19 @@ doCommands (h, client_id) state = do
             where
               my_game gr = game_resv_name gr == my_name
               close_game gr = writeChan (game_resv_wakeup gr) Nevermind
+      ["stop"] -> do
+        maybe_my_name <- liftIO $ readIORef me
+        case maybe_my_name of
+          Nothing -> liftIO $ hPutStrLn h $
+                     "406 must set name first using me command"
+          Just "admin" -> liftIO $ do
+            hPutStrLn h "205 server stopping, goodbye"
+            ss@(ServiceState game_id game_list pwf) <- takeMVar state
+            let ss' = ServiceState game_id [] pwf
+            putMVar state ss'
+            mapM_ close_game game_list
+            writeIORef continue False
+            where
+              close_game gr = writeChan (game_resv_wakeup gr) Nevermind
+          Just _ -> liftIO $ hPutStrLn h "502 admin only"
       _ -> liftIO $ hPutStrLn h $ "501 unknown command"

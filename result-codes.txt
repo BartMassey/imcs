@@ -36,3 +36,4 @@ itself.
 499 internal error: <reason>
 500 you do not exist
 501 unknown command
+502 admin only

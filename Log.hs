@@ -4,13 +4,15 @@
 --- Please see the file COPYING in the source
 --- distribution of this software for license terms.
 
-module Log (LogIO, liftIO, withLogDo, logMsg, alsoLogMsg, forkLogIO, catchLogIO)
+module Log (LogIO, liftIO, withLogDo, logMsg, alsoLogMsg,
+           forkLogIO, catchLogIO, whileLogIO)
 where
 
 import Prelude hiding (catch)
 import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Monad.Reader
+import Data.IORef
 import System.IO
 import System.IO.Error
 
@@ -53,3 +55,11 @@ catchLogIO actions handler = do
   log_chan <- ask
   liftIO $ catch (runReaderT actions log_chan)
                  (\e -> runReaderT (handler e) log_chan)
+
+whileLogIO :: IORef Bool -> LogIO () -> LogIO ()
+whileLogIO b a = do
+  cond <- liftIO $ readIORef b
+  case cond of
+    False -> return ()
+    True -> a >> whileLogIO b a
+
