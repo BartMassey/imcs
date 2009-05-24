@@ -6,12 +6,13 @@ itself.
 101 game <id> waiting for offer acceptance
 102 received acceptance
 103 accepting offer
+104 stopping server
 200 Goodbye
 201 hello <name>
 202 hello new user <name>
 203 password change for user <name>
 204 <n> games cleaned
-205 server stopping, goodbye
+205 server stopped
 210 imcs <version> help ...
 211 available games ...
 212 ratings ...
@@ -37,3 +38,4 @@ itself.
 500 you do not exist
 501 unknown command
 502 admin only
+503 server shutdown, come back later

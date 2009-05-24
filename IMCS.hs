@@ -13,6 +13,7 @@
 ---     playing-with-haskell-http-server/
 --- for his nice service example.
 
+import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Monad
 import Data.Maybe
@@ -55,12 +56,23 @@ master_accept listen_socket = do
 
 run_service :: Int -> LogIO ()
 run_service port = do
+  mainThread <- liftIO $ myThreadId
   state0 <- liftIO $ initServiceState
   state <- liftIO $ newMVar state0
   master <- master_init port
+  reaccept <- liftIO $ newMVar True
   forever $ do
     client <- master_accept master
-    forkLogIO $ doCommands client state
+    ok <- liftIO $ readMVar reaccept
+    case ok of
+      True -> do
+        forkLogIO $ doCommands (mainThread, reaccept) client state
+        return ()
+      False -> do
+        let (h, cid) = client
+        liftIO $ hPutStrLn h $ "503 server shutdown, come back later"
+        liftIO $ hClose h
+        logMsg $ "refused client " ++ cid
 
 main :: IO ()
 main = do

@@ -12,6 +12,7 @@ module Service (
 
 import Prelude hiding (catch)
 
+import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Concurrent.MVar
 import Control.Exception (evaluate, throw)
@@ -33,6 +34,9 @@ import Game
 import Log
 import Rating
 import Version
+
+debugExpectSend :: Bool
+debugExpectSend = False
 
 state_path :: FilePath
 state_path = "imcsd"
@@ -134,10 +138,10 @@ initService port admin_pw = do
               throw e
       h <- catch try_to_connect fail_to_connect
       let expect code failure = do
-            putStrLn $ "expecting " ++ code
+            when debugExpectSend $ putStrLn $ "expecting " ++ code
             let process_line = do
                   line <- hGetLine h
-                  putStrLn $ "got " ++ line
+                  when debugExpectSend $ putStrLn $ "got " ++ line
                   case words line of
                     (code' : _) | code == code' -> return ()
                     _ ->  do 
@@ -149,13 +153,14 @@ initService port admin_pw = do
                   throw e
             catch process_line io_fail
       let send s = do
-            putStrLn $ "sending " ++ s
+            when debugExpectSend $ putStrLn $ "sending " ++ s
             hPutStrLn h s
             hFlush h
       expect "100" "unexpected server hello"
       send $ "me admin " ++ admin_pw
       expect "201" "could not become admin"
       send "stop"
+      expect "104" "server did not seem to be stopping"
       expect "205" "server cannot or would not stop"
       hClose h
       return ()
@@ -260,8 +265,9 @@ game_lookup game_list game_id = do
     waiting_game (GameResv game_id' _ _ _ _) | game_id' == game_id = True
     waiting_game _ = False
 
-doCommands :: (Handle, String) -> MVar ServiceState -> LogIO ()
-doCommands (h, client_id) state = do
+doCommands :: (ThreadId, MVar Bool) -> (Handle, String)
+           -> MVar ServiceState -> LogIO ()
+doCommands (mainThread, reaccept) (h, client_id) state = do
   liftIO $ hPutStrLn h $ "100 imcs " ++ version
   continue <- liftIO $ newIORef True
   me <- liftIO $ newIORef Nothing
@@ -553,13 +559,17 @@ doCommands (h, client_id) state = do
           Just "admin" -> do
             logMsg $ "stopping server for " ++ client_id
             liftIO $ do
-              hPutStrLn h "205 server stopping, goodbye"
+              hPutStrLn h $ "104 stopping server"
               ss@(ServiceState game_id game_list pwf) <- takeMVar state
+              takeMVar reaccept
+              putMVar reaccept False
               let ss' = ServiceState game_id [] pwf
               putMVar state ss'
               mapM_ close_game game_list
+              writeIORef continue False
+              hPutStrLn h "205 server stopped"
               hClose h
-            exitSuccessLogIO
+            liftIO $ throwTo mainThread ExitSuccess
             where
               close_game (GameResv { game_resv_wakeup = w }) =
                   writeChan w Nevermind

@@ -5,7 +5,7 @@
 --- distribution of this software for license terms.
 
 module Log (LogIO, liftIO, withLogDo, logMsg, alsoLogMsg,
-           forkLogIO, catchLogIO, whileLogIO, exitSuccessLogIO)
+           forkLogIO, catchLogIO, whileLogIO)
 where
 
 import Prelude hiding (catch)
@@ -17,7 +17,7 @@ import System.Exit
 import System.IO
 import System.IO.Error
 
-data LogMsg = LogMsg String | LogMsgEof
+newtype LogMsg = LogMsg String
 
 newtype LogChan = LogChan (Chan LogMsg)
 
@@ -26,14 +26,9 @@ type LogIO a = ReaderT LogChan IO a
 run_log :: Handle -> LogChan -> IO ()
 run_log output (LogChan log_chan) =
     forever $ do
-      msg <- readChan log_chan
-      case msg of
-        LogMsg str -> do
-          hPutStrLn output str
-          hFlush output
-        LogMsgEof -> do
-          hClose output
-          exitSuccess
+      LogMsg str <- readChan log_chan
+      hPutStrLn output str
+      hFlush output
 
 logMsg :: String -> LogIO ()
 logMsg msg = do
@@ -70,8 +65,3 @@ whileLogIO b a = do
   case cond of
     False -> return ()
     True -> a >> whileLogIO b a
-
-exitSuccessLogIO :: LogIO ()
-exitSuccessLogIO = do
-    LogChan log_chan <- ask
-    liftIO $ writeChan log_chan LogMsgEof
