@@ -1,3 +1,5 @@
+* add observer mode
+* treat admin username specially
 * add webpage generation support
 * finish color arbitration
 * add time arbitration
