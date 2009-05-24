@@ -303,7 +303,7 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
           Nothing ->
               liftIO $ hPutStrLn h $ "400 no such username: " ++
                                      "please use register command"
-          Just (password', rating') ->
+          Just (password', _) ->
               if password /= password'
               then
                 liftIO $ hPutStrLn h "401 wrong password"
@@ -413,11 +413,6 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
             wakeup <- liftIO $ newChan
             ss <- liftIO $ takeMVar state
             let ServiceState game_id game_list pwf = ss
-            let my_rating =
-                  case pw_lookup ss my_name of
-                    Just (_, r) -> r
-                    --- XXX shouldn't normally happen
-                    Nothing -> baseRating
             let new_game =
                   GameResv game_id my_name client_id (head color) wakeup
             let service_state' =
@@ -442,9 +437,9 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
                         _   -> error "internal error: bad color"
                 wchan <- liftIO $ newEmptyMVar
                 let ip = InProgress game_id p1_name p2_name wchan
-                (ServiceState game_id'' game_list pwf) <- liftIO $ takeMVar state
-                let gl' = game_list ++ [ip]
-                liftIO $ putMVar state (ServiceState game_id'' gl' pwf)
+                (ServiceState game_id'' game_list'' pwf'') <- liftIO $ takeMVar state
+                let gl' = game_list'' ++ [ip]
+                liftIO $ putMVar state (ServiceState game_id'' gl' pwf'')
                 let run_game = do
                     let game_desc = show game_id ++ ": " ++
                                     my_name ++ "(" ++ client_id ++
@@ -469,22 +464,22 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
                       logMsg $ "client " ++ client_id ++ " closes"
                       where
                         lookup_rating name = do
-                          ss <- readMVar state
-                          case pw_lookup ss name of
+                          ss' <- readMVar state
+                          case pw_lookup ss' name of
                             Just (_, rating) -> return rating
                             --- XXX should never happen
                             Nothing -> return baseRating
                         update_rating name ra rb s = do
                           let ra' = updateRating ra rb s
-                          ss <- takeMVar state
-                          let ServiceState game_id'' game_list pwf = ss
+                          ss' <- takeMVar state
+                          let ServiceState game_id''' game_list''' pwf''' = ss'
                           let newpass e@(PWFEntry n password _)
                                 | n == name = PWFEntry n password ra'
                                 | otherwise = e
-                          let pwf' = map newpass pwf
-                          let ss' = ServiceState game_id'' game_list pwf'
+                          let pwf' = map newpass pwf'''
+                          let ss'' = ServiceState game_id''' game_list''' pwf'
                           write_pwf pwf'   --- XXX failure will hang server
-                          putMVar state ss'
+                          putMVar state ss''
                 let clean_up e = do
                     logMsg $ "game " ++ client_id ++
                              " incurs IO error: " ++ show e
@@ -492,18 +487,18 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
                       close_it h
                       close_it other_h
                     where
-                      close_it h = 
+                      close_it h' = 
                         catch (do
-                                  hPutStrLn h "420 fatal IO error: exiting"
-                                  hClose h)
+                                  hPutStrLn h' "420 fatal IO error: exiting"
+                                  hClose h')
                               (\_ -> return ())
                 catchLogIO run_game clean_up
-                (ServiceState game_id'' game_list pwf) <- liftIO $ takeMVar state
+                (ServiceState game_id''' game_list''' pwf''') <- liftIO $ takeMVar state
                 let exclude_me (InProgress game_id' _ _ _)
                        | game_id == game_id' = False
                     exclude_me _ = True
-                let gl' = filter exclude_me game_list
-                liftIO $ putMVar state (ServiceState game_id'' gl' pwf)
+                let gl''' = filter exclude_me game_list'''
+                liftIO $ putMVar state (ServiceState game_id''' gl''' pwf''')
                 liftIO $ putMVar wchan ()
               Nevermind ->
                 alsoLogMsg h "421 offer countermanded"
@@ -522,9 +517,9 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
             ss@(ServiceState game_id game_list pwf) <- liftIO $ takeMVar state
             game <- game_lookup game_list ask_id
             case game of
-              Left error -> do
+              Left err -> do
                 liftIO $ putMVar state ss
-                alsoLogMsg h error
+                alsoLogMsg h err
               Right (other_name, wakeup, game_list') ->  do
                 liftIO $ putMVar state $ ServiceState game_id game_list' pwf
                 logMsg $ "client " ++ client_id ++
@@ -539,7 +534,7 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
           Nothing -> liftIO $ hPutStrLn h $
                      "406 must set name first using me command"
           Just my_name -> do
-            ss@(ServiceState game_id game_list pwf) <- liftIO $ takeMVar state
+            ServiceState game_id game_list pwf <- liftIO $ takeMVar state
             let (my_list, other_list) = partition my_game game_list
             let ss' = ServiceState game_id other_list pwf
             liftIO $ putMVar state ss'
@@ -560,7 +555,7 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
             logMsg $ "stopping server for " ++ client_id
             liftIO $ do
               hPutStrLn h $ "104 stopping server"
-              ss@(ServiceState game_id game_list pwf) <- takeMVar state
+              ServiceState game_id game_list pwf <- takeMVar state
               takeMVar reaccept
               putMVar reaccept False
               let ss' = ServiceState game_id [] pwf

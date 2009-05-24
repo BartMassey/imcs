@@ -57,7 +57,7 @@ start_clock tr@(TimeRemaining _) = tr
 get_clock_time_ms :: IO Integer
 get_clock_time_ms = do
   TOD sec picosec <- getClockTime
-  return (sec * 1000 + (picosec `div` (10^9)))
+  return (sec * 1000 + (picosec `div` (10^(9::Integer))))
 
 times_fmt :: TimerState -> TimerState -> String
 times_fmt this_t other_t =
@@ -92,6 +92,7 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
         'W' -> do
           report "232" "B wins on time"
           return $ Right (-1)
+        _ -> error "internal error: unknown color"
     _ -> do
       case movt of
         Resign -> do
@@ -103,6 +104,7 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
             'W' -> do
               report "232" "B wins on resignation"
               return $ Right (-1)
+            _ -> error "internal error: unknown color"
         IllegalMove -> do
           alsoLogMsg this_h ("- illegal move")
           return (Left (problem, time'))
@@ -146,7 +148,6 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
 run_game :: Problem -> TCState -> TCState -> LogIO Int
 run_game problem (h, t) other = do
   let side = problemToMove problem
-  let trn = problemTurn problem
   result <- do_turn (h, t) other problem
   case result of
     Left (problem', t') -> do

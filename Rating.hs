@@ -20,6 +20,6 @@ baseRating = 1000
 
 updateRating :: Rating -> Rating -> Int -> Rating
 updateRating ra rb outcome = ra' where
-    ea = 1.0 / (1.0 + 10.0**(fromIntegral (rb - ra) / 400.0))
+    ea = 1.0 / (1.0 + 10.0**(fromIntegral (rb - ra) / (400.0::Double)))
     sa = (fromIntegral outcome + 1.0) / 2.0
     ra' = ra + floor (fromIntegral k * (sa - ea))

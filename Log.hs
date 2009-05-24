@@ -13,7 +13,6 @@ import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Monad.Reader
 import Data.IORef
-import System.Exit
 import System.IO
 import System.IO.Error
 
