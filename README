@@ -20,10 +20,11 @@ parseargs argument parser, available from Hackage
 (http://hackage.haskell.org/cgi-bin/hackage-scripts/package/parseargs).
 
 The program provides a service to which a client can connect
-and either offer a game, or accept a game from an existing
+and either offer a game or accept a game from an existing
 client.  Once both players are in place, the service accepts
-moves from each side in turn on its connection, after
-prompting with the game state.
+moves from each side in turn on its connection.  The server
+prompts each side with the game state to allow easy sanity
+checks.
 
 Invocation:
 
@@ -31,8 +32,14 @@ Invocation:
   invocation directory in which imcs can write game state
   and logs.  You can get this set up by running imcs with
   the --init flag.  This is also how you upgrade to new
-  versions of imcs.  It is suggested not to run --init
-  unless you need to initialize or upgrade.
+  versions of imcs.  You may run --init to initialize or
+  upgrade, or just as a convenient way to stop the server.
+  From version 2.2 on, --init takes an argument which is the
+  password for the user "admin", who should be registered
+  with imcs.  This password is used by the new "stop"
+  command, which will put the server in a stopping state,
+  wait until all current games have been played, and then
+  cause the server to exit.
 
   The --port <n> argument sets the server listening port;
   the current default port is, for no very good reason,
