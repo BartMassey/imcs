@@ -1,7 +1,6 @@
 * add observer mode
 * treat admin username specially
 * add webpage generation support
-* finish color arbitration
 * add time arbitration
 * better handling of unexpected disconnects
 * better document protocol
