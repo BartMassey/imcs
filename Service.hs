@@ -286,7 +286,7 @@ doCommands :: (ThreadId, MVar Bool) -> (Handle, String)
 doCommands (mainThread, reaccept) (h, client_id) state = do
   liftIO $ hPutStrLn h $ "100 imcs " ++ version
   me <- liftIO $ newIORef Nothing
-  forever $ runFinishT $ do
+  runFinishT $ forever $ do
     line <- liftIO $ hGetLine h
     case words line of
       [] -> do
