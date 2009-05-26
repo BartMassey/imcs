@@ -528,6 +528,7 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
                         liftIO $ putMVar state
                                          (ServiceState game_id''' gl''' pwf''')
                         liftIO $ putMVar wchan ()
+                        finish ()
                   Nevermind ->
                     alsoLogMsg h "421 offer countermanded"
             where
@@ -583,6 +584,7 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
                     liftIO $ do
                       hPutStrLn h "103 accepting offer"
                       writeChan wakeup $ Wakeup my_name client_id h my_color
+                    finish ()
       ["clean"] -> do
         maybe_my_name <- liftIO $ readIORef me
         case maybe_my_name of
@@ -619,6 +621,7 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
               hPutStrLn h "205 server stopped"
               hClose h
               throwTo mainThread ExitSuccess
+            finish ()                                                       
             where
               close_game (GameResv { game_resv_wakeup = w }) =
                   writeChan w Nevermind
