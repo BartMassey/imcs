@@ -31,6 +31,7 @@ import System.Posix.Files
 import System.Posix.Directory
 import System.Time
 
+import Control.Monad.Finish
 import Game
 import Log
 import Rating
@@ -281,11 +282,11 @@ check_color opt_color =
 
 doCommands :: (ThreadId, MVar Bool) -> (Handle, String)
            -> MVar ServiceState -> LogIO ()
-doCommands (mainThread, reaccept) (h, client_id) state = do
+doCommands (mainThread, reaccept) (h, client_id) state = runFinishT $ do
   liftIO $ hPutStrLn h $ "100 imcs " ++ version
   continue <- liftIO $ newIORef True
   me <- liftIO $ newIORef Nothing
-  whileLogIO continue $ do
+  forever $ do
     line <- liftIO $ hGetLine h
     case words line of
       [] -> do
