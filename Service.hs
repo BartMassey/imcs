@@ -282,11 +282,10 @@ check_color opt_color =
 
 doCommands :: (ThreadId, MVar Bool) -> (Handle, String)
            -> MVar ServiceState -> LogIO ()
-doCommands (mainThread, reaccept) (h, client_id) state = runFinishT $ do
+doCommands (mainThread, reaccept) (h, client_id) state = do
   liftIO $ hPutStrLn h $ "100 imcs " ++ version
-  continue <- liftIO $ newIORef True
   me <- liftIO $ newIORef Nothing
-  forever $ do
+  forever $ runFinishT $ do
     line <- liftIO $ hGetLine h
     case words line of
       [] -> do
@@ -310,7 +309,6 @@ doCommands (mainThread, reaccept) (h, client_id) state = runFinishT $ do
         logMsg $ "client " ++ client_id ++ " quits"
         liftIO $ do
           hPutStrLn h "200 Goodbye"
-          writeIORef continue False
           hClose h
       ["me", name, password] -> do
         ss <- liftIO $ readMVar state
@@ -445,7 +443,6 @@ doCommands (mainThread, reaccept) (h, client_id) state = runFinishT $ do
                 case w of
                   Wakeup other_name other_id other_h other_color -> do
                     liftIO $ hPutStrLn h "102 received acceptance"
-                    liftIO $ writeIORef continue False
                     let my_info = ((h, default_time),
                                    my_name, my_color)
                     let other_info = ((other_h, default_time),
@@ -582,7 +579,6 @@ doCommands (mainThread, reaccept) (h, client_id) state = runFinishT $ do
                     logMsg $ "client " ++ client_id ++
                              " accepts " ++ show other_name
                     liftIO $ do
-                      writeIORef continue False
                       hPutStrLn h "103 accepting offer"
                       writeChan wakeup $ Wakeup my_name client_id h my_color
       ["clean"] -> do
@@ -618,10 +614,9 @@ doCommands (mainThread, reaccept) (h, client_id) state = runFinishT $ do
               let ss' = ServiceState game_id [] pwf
               putMVar state ss'
               mapM_ close_game game_list
-              writeIORef continue False
               hPutStrLn h "205 server stopped"
               hClose h
-            liftIO $ throwTo mainThread ExitSuccess
+              throwTo mainThread ExitSuccess
             where
               close_game (GameResv { game_resv_wakeup = w }) =
                   writeChan w Nevermind
