@@ -1,16 +1,18 @@
+{-# LANGUAGE FlexibleContexts, FlexibleInstances #-}
 --- Copyright © 2009 Bart Massey
 --- ALL RIGHTS RESERVED
 --- [This program is licensed under the "MIT License"]
 --- Please see the file COPYING in the source
 --- distribution of this software for license terms.
 
-module Log (LogIO, liftIO, withLogDo, logMsg, alsoLogMsg,
+module Log (LogIO, MonadLogIO, liftIO, withLogDo, logMsg, alsoLogMsg,
            forkLogIO, catchLogIO, whileLogIO)
 where
 
 import Prelude hiding (catch)
 import Control.Concurrent
 import Control.Concurrent.Chan
+import Control.Monad.Finish
 import Control.Monad.Reader
 import Data.IORef
 import System.IO
@@ -22,6 +24,10 @@ newtype LogChan = LogChan (Chan LogMsg)
 
 type LogIO a = ReaderT LogChan IO a
 
+class (MonadIO m, MonadReader LogChan m) => MonadLogIO m where {}
+instance MonadLogIO (ReaderT LogChan IO) where {}
+instance MonadLogIO m => MonadLogIO (FinishT r m) where {}
+
 run_log :: Handle -> LogChan -> IO ()
 run_log output (LogChan log_chan) =
     forever $ do
@@ -29,12 +35,12 @@ run_log output (LogChan log_chan) =
       hPutStrLn output str
       hFlush output
 
-logMsg :: String -> LogIO ()
+logMsg :: MonadLogIO m => String -> m ()
 logMsg msg = do
   LogChan log_chan <- ask
   liftIO $ writeChan log_chan (LogMsg msg)
 
-alsoLogMsg :: Handle -> String -> LogIO ()
+alsoLogMsg :: MonadLogIO m => Handle -> String -> m ()
 alsoLogMsg primary msg = do
     liftIO $ hPutStrLn primary msg
     logMsg msg

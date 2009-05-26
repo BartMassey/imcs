@@ -17,6 +17,7 @@ import Control.Concurrent.Chan
 import Control.Concurrent.MVar
 import Control.Exception (evaluate, throw)
 import Control.Monad
+import Control.Monad.Trans
 import Data.Char
 import Data.IORef
 import Data.List
@@ -256,8 +257,8 @@ pw_lookup :: ServiceState -> String -> Maybe (String, Rating)
 pw_lookup ss name = lookup name pwf where
     pwf = map (\(PWFEntry n p r) -> (n, (p, r))) $ service_state_pwf ss
 
-game_lookup :: [GamePost] -> Int
-            -> LogIO (Either String (String, Chan Wakeup, [GamePost]))
+game_lookup :: MonadLogIO m => [GamePost] -> Int
+            -> m (Either String (String, Chan Wakeup, [GamePost]))
 game_lookup game_list game_id = do
   case partition waiting_game game_list of
     ([GameResv _ other_name _ _ wakeup], rest) ->
@@ -310,6 +311,7 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
         liftIO $ do
           hPutStrLn h "200 Goodbye"
           hClose h
+        finish ()
       ["me", name, password] -> do
         ss <- liftIO $ readMVar state
         case pw_lookup ss name of
@@ -516,7 +518,7 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
                                               "420 fatal IO error: exiting"
                                           hClose h')
                                       (\_ -> return ())
-                        catchLogIO run_game clean_up
+                        lift $ catchLogIO run_game clean_up
                         (ServiceState game_id''' game_list''' pwf''') <-
                             liftIO $ takeMVar state
                         let exclude_me (InProgress game_id' _ _ _)
@@ -543,7 +545,7 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
                     ("W", "?") -> left
                     ("B", "?") -> right
                     ("?", "?") -> do
-                      dirn <- liftIO $ randomRIO (0, 2) :: LogIO Int
+                      dirn <- liftIO $ randomRIO (0, 2::Int)
                       case dirn of
                         0 -> left
                         1 -> right
