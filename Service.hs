@@ -17,6 +17,7 @@ import Control.Concurrent.Chan
 import Control.Concurrent.MVar
 import Control.Exception (evaluate, throw)
 import Control.Monad
+import Control.Monad.Error
 import Control.Monad.Trans
 import Data.Char
 import Data.IORef
@@ -32,7 +33,6 @@ import System.Posix.Files
 import System.Posix.Directory
 import System.Time
 
-import Control.Monad.Finish
 import Game
 import Log
 import Rating
@@ -257,10 +257,15 @@ pw_lookup :: ServiceState -> String -> Maybe (String, Rating)
 pw_lookup ss name = lookup name pwf where
     pwf = map (\(PWFEntry n p r) -> (n, (p, r))) $ service_state_pwf ss
 
-type FLIO = FinishT () LogIO
+instance Error ()
+
+type ELIO = ErrorT () LogIO
+
+finish :: ELIO ()
+finish = throwError ()
 
 game_lookup :: [GamePost] -> Int
-            -> FLIO (Either String (String, Chan Wakeup, [GamePost]))
+            -> ELIO (Either String (String, Chan Wakeup, [GamePost]))
 game_lookup game_list game_id = do
   case partition waiting_game game_list of
     ([GameResv _ other_name _ _ wakeup], rest) ->
@@ -283,7 +288,7 @@ check_color opt_color =
       [c] -> ""
       _ -> error "internal error: bogus accept color"
 
-myCommand :: [String] -> FLIO ()
+myCommand :: [String] -> ELIO ()
 myCommand s = return ()
 
 doCommands :: (ThreadId, MVar Bool) -> (Handle, String)
@@ -291,7 +296,7 @@ doCommands :: (ThreadId, MVar Bool) -> (Handle, String)
 doCommands (mainThread, reaccept) (h, client_id) state = do
   liftIO $ hPutStrLn h $ "100 imcs " ++ version
   me <- liftIO $ newIORef Nothing
-  runFinishT $ forever $ do
+  runErrorT $ forever $ do
     line <- liftIO $ hGetLine h
     case words line of
       [] -> do
@@ -316,7 +321,7 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
         liftIO $ do
           hPutStrLn h "200 Goodbye"
           hClose h
-        finish ()
+        finish
       ["me", name, password] -> do
         ss <- liftIO $ readMVar state
         case pw_lookup ss name of
@@ -533,7 +538,7 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
                         liftIO $ putMVar state
                                          (ServiceState game_id''' gl''' pwf''')
                         liftIO $ putMVar wchan ()
-                        finish ()
+                        finish
                   Nevermind ->
                     alsoLogMsg h "421 offer countermanded"
             where
@@ -589,7 +594,7 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
                     liftIO $ do
                       hPutStrLn h "103 accepting offer"
                       writeChan wakeup $ Wakeup my_name client_id h my_color
-                    finish ()
+                    finish
       ["clean"] -> do
         maybe_my_name <- liftIO $ readIORef me
         case maybe_my_name of
@@ -626,7 +631,7 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
               hPutStrLn h "205 server stopped"
               hClose h
               throwTo mainThread ExitSuccess
-            finish ()                                                       
+            finish                                                       
             where
               close_game (GameResv { game_resv_wakeup = w }) =
                   writeChan w Nevermind
@@ -634,3 +639,4 @@ doCommands (mainThread, reaccept) (h, client_id) state = do
                   readMVar w
           Just _ -> liftIO $ hPutStrLn h "502 admin only"
       _ -> liftIO $ hPutStrLn h $ "501 unknown command"
+  return ()

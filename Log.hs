@@ -12,7 +12,7 @@ where
 import Prelude hiding (catch)
 import Control.Concurrent
 import Control.Concurrent.Chan
-import Control.Monad.Finish
+import Control.Monad.Error
 import Control.Monad.Reader
 import Data.IORef
 import System.IO
@@ -24,9 +24,9 @@ newtype LogChan = LogChan (Chan LogMsg)
 
 type LogIO = ReaderT LogChan IO
 
-class (MonadIO m, MonadReader LogChan m) => MonadLogIO m where {}
-instance MonadLogIO LogIO where {}
-instance MonadLogIO m => MonadLogIO (FinishT r m) where {}
+class (MonadIO m, MonadReader LogChan m) => MonadLogIO m
+instance MonadLogIO LogIO
+instance (Error e, MonadLogIO m) => MonadLogIO (ErrorT e m)
 
 run_log :: Handle -> LogChan -> IO ()
 run_log output (LogChan log_chan) =
