@@ -288,34 +288,44 @@ check_color opt_color =
       [c] -> ""
       _ -> error "internal error: bogus accept color"
 
-myCommand :: [String] -> ELIO ()
-myCommand s = return ()
+data CommandState = CS {
+      cs_main_thread :: ThreadId,
+      cs_reaccept :: MVar Bool,
+      cs_h :: Handle,
+      cs_client_id :: String,
+      cs_state :: MVar ServiceState,
+      cs_me :: IORef (Maybe String) }
+
+type Command = CommandState -> ELIO ()
+    
+helpCommand :: Command
+helpCommand (CS {cs_h = h}) = do
+  liftIO $ hPutStr h $ unlines [
+    "210 imcs " ++ version ++ " help",
+    " help: this help",
+    " quit: quit imcs",
+    " me <name> <password>: log in",
+    " register <name> <password>: register a new name and log in",
+    " password <password>: change password",
+    " list: list available games in format",
+    "       <id> <opponent-name> <opponent-color> <opponent-rating>",
+    " ratings: list player ratings (top 10 plus own)",
+    " offer [<color>]: offer a game as W, B, or ?",
+    " accept <id> [<color>]: accept a game with an opponent",
+    " clean: cancel all outstanding offers by player",
+    "." ]
 
 doCommands :: (ThreadId, MVar Bool) -> (Handle, String)
            -> MVar ServiceState -> LogIO ()
 doCommands (mainThread, reaccept) (h, client_id) state = do
   liftIO $ hPutStrLn h $ "100 imcs " ++ version
   me <- liftIO $ newIORef Nothing
+  let params = CS mainThread reaccept h client_id state me
   runErrorT $ forever $ do
     line <- liftIO $ hGetLine h
     case words line of
-      [] -> do
-        return ()
-      ["help"] -> do
-        liftIO $ hPutStr h $ unlines [
-          "210 imcs " ++ version ++ " help",
-          " help: this help",
-          " quit: quit imcs",
-          " me <name> <password>: log in",
-          " register <name> <password>: register a new name and log in",
-          " password <password>: change password",
-          " list: list available games in format",
-          "       <id> <opponent-name> <opponent-color> <opponent-rating>",
-          " ratings: list player ratings (top 10 plus own)",
-          " offer [<color>]: offer a game as W, B, or ?",
-          " accept <id> [<color>]: accept a game with an opponent",
-          " clean: cancel all outstanding offers by player",
-          "." ]
+      [] -> return ()
+      ["help"] -> helpCommand params
       ["quit"] -> do
         logMsg $ "client " ++ client_id ++ " quits"
         liftIO $ do
