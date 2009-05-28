@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, TypeSynonymInstances #-}
 --- Copyright © 2009 Bart Massey
 --- ALL RIGHTS RESERVED
 --- [This program is licensed under the "MIT License"]
@@ -22,10 +22,10 @@ newtype LogMsg = LogMsg String
 
 newtype LogChan = LogChan (Chan LogMsg)
 
-type LogIO a = ReaderT LogChan IO a
+type LogIO = ReaderT LogChan IO
 
 class (MonadIO m, MonadReader LogChan m) => MonadLogIO m where {}
-instance MonadLogIO (ReaderT LogChan IO) where {}
+instance MonadLogIO LogIO where {}
 instance MonadLogIO m => MonadLogIO (FinishT r m) where {}
 
 run_log :: Handle -> LogChan -> IO ()

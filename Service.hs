@@ -257,8 +257,10 @@ pw_lookup :: ServiceState -> String -> Maybe (String, Rating)
 pw_lookup ss name = lookup name pwf where
     pwf = map (\(PWFEntry n p r) -> (n, (p, r))) $ service_state_pwf ss
 
-game_lookup :: MonadLogIO m => [GamePost] -> Int
-            -> m (Either String (String, Chan Wakeup, [GamePost]))
+type FLIO = FinishT () LogIO
+
+game_lookup :: [GamePost] -> Int
+            -> FLIO (Either String (String, Chan Wakeup, [GamePost]))
 game_lookup game_list game_id = do
   case partition waiting_game game_list of
     ([GameResv _ other_name _ _ wakeup], rest) ->
@@ -280,6 +282,9 @@ check_color opt_color =
       ["?"] -> "?"
       [c] -> ""
       _ -> error "internal error: bogus accept color"
+
+myCommand :: [String] -> FLIO ()
+myCommand s = return ()
 
 doCommands :: (ThreadId, MVar Bool) -> (Handle, String)
            -> MVar ServiceState -> LogIO ()
