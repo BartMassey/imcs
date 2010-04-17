@@ -1,6 +1,5 @@
 * add observer mode
-* treat admin username specially
 * add webpage generation support
-* add time arbitration
 * better handling of unexpected disconnects
-* better document protocol
+* better protocol documentation
+* add server support for setting game times
