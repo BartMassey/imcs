@@ -290,8 +290,9 @@ data CommandState = CS {
 type Command = CommandState -> ELIO ()
     
 helpCommand :: Command
-helpCommand (CS {cs_h = h}) = do
-  liftIO $ hPutStr h $ unlines [
+helpCommand (CS {cs_h = h, cs_me = me}) = do
+  maybe_my_name <- liftIO $ readIORef me
+  liftIO $ hPutStr h $ unlines $ [
     "210 imcs " ++ version ++ " help",
     " help: this help",
     " quit: quit imcs",
@@ -303,8 +304,10 @@ helpCommand (CS {cs_h = h}) = do
     " ratings: list player ratings (top 10 plus own)",
     " offer [<color>]: offer a game as W, B, or ?",
     " accept <id> [<color>]: accept a game with an opponent",
-    " clean: cancel all outstanding offers of current player",
-    "." ]
+    " clean: cancel all outstanding offers of current player" ] ++
+    (case maybe_my_name of
+       Just "admin" -> [" stop: stop the server"]
+       _ -> []) ++ ["."]
 
 quitCommand :: Command
 quitCommand (CS {cs_h = h, cs_client_id = client_id}) = do
