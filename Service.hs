@@ -101,9 +101,12 @@ initService :: Int -> String -> IO ()
 initService port admin_pw = do
   fversion <- read_versionf
   case fversion of
-    "2.3" -> do
+    "2.4" -> do
       putStrLn $ "using existing version " ++ fversion
       terminate_existing_server
+    "2.3" -> do
+      terminate_existing_server
+      write_versionf
     "2.2" -> do
       terminate_existing_server
       write_versionf
@@ -468,7 +471,11 @@ offerCommand opt_color (CS {cs_h = h, cs_client_id = client_id,
             write_game_id (game_id + 1)   --- XXX failure hangs server
 
             putMVar state service_state'
-            hPutStrLn h $ "101 game " ++ show game_id ++
+            let result_code = case my_color of
+                                "W" -> "107 "
+                                "B" -> "108 "
+            hPutStrLn h $ result_code ++ my_color ++ " game " ++
+                          show game_id ++
                           " waiting for offer acceptance"
           w <- liftIO $ readChan wakeup
           case w of
@@ -615,7 +622,10 @@ acceptCommand accept_game_id opt_color
               logMsg $ "client " ++ client_id ++
                        " accepts " ++ show other_name
               liftIO $ do
-                hPutStrLn h "103 accepting offer"
+                hPutStrLn h $
+                  case my_color of
+                    "W" -> "105 W accepting offer"
+                    "B" -> "106 B accepting offer"
                 writeChan wakeup $ Wakeup my_name client_id h my_color
               finish
 
