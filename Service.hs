@@ -269,11 +269,11 @@ finish :: ELIO ()
 finish = throwError ()
 
 game_lookup :: [GamePost] -> Int
-            -> ELIO (Either String (String, Chan Wakeup, [GamePost]))
+            -> ELIO (Either String (String, Char, Chan Wakeup, [GamePost]))
 game_lookup game_list game_id = do
   case partition waiting_game game_list of
-    ([GameResv _ other_name _ _ wakeup], rest) ->
-        return $ Right (other_name, wakeup, rest)
+    ([GameResv _ other_name _ side wakeup], rest) ->
+        return $ Right (other_name, side, wakeup, rest)
     ([], _) -> 
         return $ Left "408 no such game"
     _ ->
@@ -616,7 +616,7 @@ acceptCommand accept_game_id opt_color
             Left err -> do
               liftIO $ putMVar state ss
               alsoLogMsg h err
-            Right (other_name, wakeup, game_list') ->  do
+            Right (other_name, other_color, wakeup, game_list') ->  do
               liftIO $ putMVar state $
                   ServiceState game_id game_list' pwf
               logMsg $ "client " ++ client_id ++
@@ -626,6 +626,11 @@ acceptCommand accept_game_id opt_color
                   case my_color of
                     "W" -> "105 W accepting offer"
                     "B" -> "106 B accepting offer"
+                    "?" -> case other_color of
+                             'W' -> "106 B accepting offer"
+                             'B' -> "105 W accepting offer"
+                             _ -> error "internal error: bad offer color"
+                    _ -> error "internal error: bad accept color"
                 writeChan wakeup $ Wakeup my_name client_id h my_color
               finish
 
