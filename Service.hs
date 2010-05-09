@@ -158,7 +158,6 @@ initService port admin_pw = do
             let send s = do
                   when debugExpectSend $ putStrLn $ "sending " ++ s
                   hPutStrLn h s
-                  hFlush h
             expect "100" "unexpected server hello"
             send $ "me admin " ++ admin_pw
             expect "201" "could not become admin"
@@ -262,6 +261,14 @@ instance Error ()
 
 type ELIO = ErrorT () LogIO
 
+sUnlines :: [String] -> String
+sUnlines = concatMap (++ "\r\n")
+
+sPutStrLn :: MonadLogIO m => Handle -> String -> m ()
+sPutStrLn h s = liftIO $ do
+  hPutStr h $ s ++ "\r\n"
+  hFlush h
+
 finish :: ELIO ()
 finish = throwError ()
 
@@ -292,7 +299,7 @@ type Command = CommandState -> ELIO ()
 helpCommand :: Command
 helpCommand (CS {cs_h = h, cs_me = me}) = do
   maybe_my_name <- liftIO $ readIORef me
-  liftIO $ hPutStr h $ unlines $ [
+  liftIO $ hPutStr h $ sUnlines $ [
     "210 imcs " ++ version ++ " help",
     " help: this help",
     " quit: quit imcs",
@@ -312,9 +319,8 @@ helpCommand (CS {cs_h = h, cs_me = me}) = do
 quitCommand :: Command
 quitCommand (CS {cs_h = h, cs_client_id = client_id}) = do
   logMsg $ "client " ++ client_id ++ " quits"
-  liftIO $ do
-    hPutStrLn h "200 Goodbye"
-    hClose h
+  sPutStrLn h "200 Goodbye"
+  liftIO $ hClose h
   finish
 
 meCommand :: String -> String -> Command
@@ -323,25 +329,25 @@ meCommand name password (CS {cs_h = h,  cs_client_id = client_id,
   ss <- liftIO $ readMVar state
   case pw_lookup ss name of
     Nothing ->
-        liftIO $ hPutStrLn h $ "400 no such username: " ++
+        sPutStrLn h $ "400 no such username: " ++
                                "please use register command"
     Just (password', _) ->
         if password /= password'
         then
-          liftIO $ hPutStrLn h "401 wrong password"
+          sPutStrLn h "401 wrong password"
         else do
           logMsg $ "client " ++ client_id ++ " aka " ++ name
           liftIO $ writeIORef me $ Just name
-          liftIO $ hPutStrLn h $ "201 hello " ++ name
+          sPutStrLn h $ "201 hello " ++ name
 
 registerCommand :: String -> String -> Command
 registerCommand name password (CS {cs_h = h, cs_client_id = client_id,
                                    cs_state = state, cs_me = me}) = do
   ss <- liftIO $ takeMVar state
   case pw_lookup ss name of
-    Just _ -> liftIO $ do
-      putMVar state ss
-      hPutStrLn h $ "402 username already exists: " ++
+    Just _ -> do
+      liftIO $ putMVar state ss
+      sPutStrLn h $ "402 username already exists: " ++
                     "please use password command to change"
     Nothing -> do
       let ServiceState game_id game_list pwf = ss
@@ -352,7 +358,7 @@ registerCommand name password (CS {cs_h = h, cs_client_id = client_id,
         write_pwf pwf' --- XXX failure will hang server
         putMVar state ss'
         writeIORef me $ Just name
-        hPutStrLn h $ "202 hello new user " ++ name
+      sPutStrLn h $ "202 hello new user " ++ name
       logMsg $ "registered client " ++ client_id ++
                " as user " ++ name
 
@@ -362,7 +368,7 @@ passwordCommand password (CS {cs_h = h, cs_client_id = client_id,
   maybe_my_name <- liftIO $ readIORef me
   case maybe_my_name of
     Nothing ->
-      liftIO $ hPutStrLn h "403 please use the me command first"
+      sPutStrLn h "403 please use the me command first"
     Just my_name -> do
       ss <- liftIO $ takeMVar state
       case pw_lookup ss my_name of
@@ -370,7 +376,7 @@ passwordCommand password (CS {cs_h = h, cs_client_id = client_id,
           liftIO $ putMVar state ss
           logMsg $ "client " ++ client_id ++ " name " ++
                    my_name ++ "not in password file"
-          liftIO $ hPutStrLn h "500 you do not exist: go away"
+          sPutStrLn h "500 you do not exist: go away"
         Just _ -> do
           let ServiceState game_id game_list pwf = ss
           let newpass e@(PWFEntry n _ rating)
@@ -381,60 +387,58 @@ passwordCommand password (CS {cs_h = h, cs_client_id = client_id,
           liftIO $ do
             write_pwf pwf'  --- XXX failure will hang server
             putMVar state ss'
-            hPutStrLn h $ "203 password change for user " ++ my_name
+          sPutStrLn h $ "203 password change for user " ++ my_name
           logMsg $ "changed password for client " ++ client_id ++
                    " user " ++ my_name
 
 listCommand :: Command
-listCommand (CS {cs_h = h, cs_state = state}) =
-  liftIO $ do
-    ss@(ServiceState _ game_list _) <- readMVar state
-    hPutStrLn h "211 available games"
-    let lookup_rating other_name =
-            case pw_lookup ss other_name of
-              Nothing -> "?"
-              Just (_, r) -> show r
-    let output_game (GameResv game_id other_name _ color _) =
-            hPutStrLn h $ " " ++ show game_id ++
-                          " " ++ other_name ++
-                          " " ++ [color] ++
-                          " " ++ lookup_rating other_name ++
-                          " [offer]"
-        output_game (InProgress game_id name_white name_black _) =
-            hPutStrLn h $ " " ++ show game_id ++
-                          " " ++ name_white ++
-                          " " ++ name_black ++
-                          " (" ++ lookup_rating name_white ++ "/" ++
-                               lookup_rating name_black ++ ") " ++
-                          " [in-progress]"
-    mapM_ output_game game_list
-    hPutStrLn h "."
+listCommand (CS {cs_h = h, cs_state = state}) = do
+  ss@(ServiceState _ game_list _) <- liftIO $ readMVar state
+  sPutStrLn h "211 available games"
+  let lookup_rating other_name =
+          case pw_lookup ss other_name of
+            Nothing -> "?"
+            Just (_, r) -> show r
+  let output_game (GameResv game_id other_name _ color _) =
+          sPutStrLn h $ " " ++ show game_id ++
+                        " " ++ other_name ++
+                        " " ++ [color] ++
+                        " " ++ lookup_rating other_name ++
+                        " [offer]"
+      output_game (InProgress game_id name_white name_black _) =
+          sPutStrLn h $ " " ++ show game_id ++
+                        " " ++ name_white ++
+                        " " ++ name_black ++
+                        " (" ++ lookup_rating name_white ++ "/" ++
+                             lookup_rating name_black ++ ") " ++
+                        " [in-progress]"
+  mapM_ output_game game_list
+  sPutStrLn h "."
 
 ratingsCommand :: Command
-ratingsCommand (CS {cs_h = h, cs_state = state, cs_me = me}) =
-  liftIO $ do
-    ServiceState _ _ pwf <- readMVar state
-    maybe_my_name <- readIORef me
-    let ratings = map rating_info pwf
-    let top10 = take 10 $ sortBy (comparing (negate . snd)) ratings
-    let rating_list =
-            case maybe_my_name of
-              Nothing -> top10
-              Just my_name ->
-                  case lookup my_name top10 of
-                    Just _ -> top10
-                    Nothing ->
-                        case lookup my_name ratings of
-                          Nothing -> top10
-                          Just my_rating -> top10 ++ [(my_name, my_rating)]
-    hPutStrLn h "212 ratings"
-    mapM_ output_rating rating_list
-    hPutStrLn h "."
-    where
-      rating_info (PWFEntry pname _ prating) = (pname, prating)
-      output_rating (pname, prating) =
-        hPutStrLn h $ " " ++ pname ++
-                      " " ++ show prating
+ratingsCommand (CS {cs_h = h, cs_state = state, cs_me = me}) = do
+  ServiceState _ _ pwf <- liftIO $ readMVar state
+  maybe_my_name <- liftIO $ readIORef me
+  let ratings = map rating_info pwf
+  let top10 = take 10 $ sortBy (comparing (negate . snd)) ratings
+  let rating_list =
+          case maybe_my_name of
+            Nothing -> top10
+            Just my_name ->
+                case lookup my_name top10 of
+                  Just _ -> top10
+                  Nothing ->
+                      case lookup my_name ratings of
+                        Nothing -> top10
+                        Just my_rating -> top10 ++ [(my_name, my_rating)]
+  sPutStrLn h "212 ratings"
+  mapM_ output_rating rating_list
+  sPutStrLn h "."
+  where
+    rating_info (PWFEntry pname _ prating) = (pname, prating)
+    output_rating (pname, prating) =
+      sPutStrLn h $ " " ++ pname ++
+                    " " ++ show prating
 
 check_color :: Maybe String -> Maybe String
 check_color Nothing = Just "?"
@@ -448,12 +452,12 @@ offerCommand opt_color (CS {cs_h = h, cs_client_id = client_id,
                             cs_state = state, cs_me = me}) = do
   case check_color opt_color of
     Nothing ->
-      liftIO $ hPutStrLn h $ "405 bad color " ++ fromJust opt_color
+      sPutStrLn h $ "405 bad color " ++ fromJust opt_color
     Just my_color -> do
       maybe_my_name <- liftIO $ readIORef me
       case maybe_my_name of
         Nothing ->
-          liftIO $ hPutStrLn h "404 must set name first using me command"
+          sPutStrLn h "404 must set name first using me command"
         Just my_name -> do
           logMsg $ "client " ++ client_id ++
                    " offers game as " ++ my_color
@@ -468,12 +472,12 @@ offerCommand opt_color (CS {cs_h = h, cs_client_id = client_id,
             write_game_id (game_id + 1)   --- XXX failure hangs server
 
             putMVar state service_state'
-            hPutStrLn h $ "101 game " ++ show game_id ++
-                          " waiting for offer acceptance"
+          sPutStrLn h $ "101 game " ++ show game_id ++
+                        " waiting for offer acceptance"
           w <- liftIO $ readChan wakeup
           case w of
             Wakeup other_name other_id other_h other_color -> do
-              liftIO $ hPutStrLn h "102 received acceptance"
+              sPutStrLn h "102 received acceptance"
               let my_info = ((h, default_time),
                              my_name, my_color)
               let other_info = ((other_h, default_time),
@@ -537,14 +541,14 @@ offerCommand opt_color (CS {cs_h = h, cs_client_id = client_id,
                   let clean_up e = do
                       logMsg $ "game " ++ client_id ++
                                " incurs IO error: " ++ show e
-                      liftIO $ do
-                        close_it h
-                        close_it other_h
+                      liftIO $ close_it h
+                      liftIO $ close_it other_h
                       where
+                        close_it :: Handle -> IO ()
                         close_it h' = 
                           catch (do
                                     hPutStrLn h'
-                                        "420 fatal IO error: exiting"
+                                        "420 fatal IO error: exiting\r\n"
                                     hClose h')
                                 (\_ -> return ())
                   lift $ catchLogIO run_game clean_up
@@ -593,14 +597,14 @@ acceptCommand accept_game_id opt_color
                    cs_state = state, cs_me = me}) = do
   case check_color opt_color of
     Nothing ->
-      liftIO $ hPutStrLn h $ "405 bad color " ++ fromJust opt_color
+      sPutStrLn h $ "405 bad color " ++ fromJust opt_color
     Just my_color -> do
       maybe_my_name <- liftIO $ readIORef me
       case (parse_int accept_game_id, maybe_my_name) of
         (_, Nothing) ->
-          liftIO $ hPutStrLn h "406 must set name first using me command"
+          sPutStrLn h "406 must set name first using me command"
         (Nothing, _) ->
-          liftIO $ hPutStrLn h "407 bad game id"
+          sPutStrLn h "407 bad game id"
         (Just ask_id, Just my_name) -> do
           ss@(ServiceState game_id game_list pwf) <-
               liftIO $ takeMVar state
@@ -614,24 +618,23 @@ acceptCommand accept_game_id opt_color
                   ServiceState game_id game_list' pwf
               logMsg $ "client " ++ client_id ++
                        " accepts " ++ show other_name
-              liftIO $ do
-                hPutStrLn h "103 accepting offer"
-                writeChan wakeup $ Wakeup my_name client_id h my_color
+               
+              sPutStrLn h "103 accepting offer"
+              liftIO $ writeChan wakeup $ Wakeup my_name client_id h my_color
               finish
 
 cleanCommand :: Command
 cleanCommand (CS {cs_h = h, cs_state = state, cs_me = me}) = do
   maybe_my_name <- liftIO $ readIORef me
   case maybe_my_name of
-    Nothing -> liftIO $ hPutStrLn h $
-               "406 must set name first using me command"
+    Nothing -> sPutStrLn h "406 must set name first using me command"
     Just my_name -> do
       ServiceState game_id game_list pwf <- liftIO $ takeMVar state
       let (my_list, other_list) = partition my_game game_list
       let ss' = ServiceState game_id other_list pwf
       liftIO $ putMVar state ss'
       liftIO $ mapM_ close_game my_list
-      liftIO $ hPutStrLn h $ "204 " ++ show (length my_list) ++
+      sPutStrLn h $ "204 " ++ show (length my_list) ++
                              " games cleaned"
       where
         my_game (GameResv { game_resv_name = name })
@@ -646,33 +649,32 @@ stopCommand (CS {cs_h = h, cs_state = state, cs_me = me,
                  cs_reaccept = reaccept}) = do
   maybe_my_name <- liftIO $ readIORef me
   case maybe_my_name of
-    Nothing -> liftIO $ hPutStrLn h $
-               "406 must set name first using me command"
+    Nothing -> sPutStrLn h "406 must set name first using me command"
     Just "admin" -> do
       logMsg $ "stopping server for " ++ client_id
+      sPutStrLn h "104 stopping server"
       liftIO $ do
-        hPutStrLn h $ "104 stopping server"
         ServiceState game_id game_list pwf <- takeMVar state
         takeMVar reaccept
         putMVar reaccept False
         let ss' = ServiceState game_id [] pwf
         putMVar state ss'
         mapM_ close_game game_list
-        hPutStrLn h "205 server stopped"
-        hClose h
-        throwTo main_thread ExitSuccess
+      sPutStrLn h "205 server stopped"
+      liftIO $ hClose h
+      liftIO $ throwTo main_thread ExitSuccess
       finish                                                       
       where
         close_game (GameResv { game_resv_wakeup = w }) =
             writeChan w Nevermind
         close_game (InProgress { in_progress_wakeup = w }) = do
             readMVar w
-    Just _ -> liftIO $ hPutStrLn h "502 admin only"
+    Just _ -> sPutStrLn h "502 admin only"
 
 doCommands :: (ThreadId, MVar Bool) -> (Handle, String)
            -> MVar ServiceState -> LogIO ()
 doCommands (main_thread, reaccept) (h, client_id) state = do
-  liftIO $ hPutStrLn h $ "100 imcs " ++ version
+  sPutStrLn h $ "100 imcs " ++ version
   me <- liftIO $ newIORef Nothing
   let params = CS main_thread reaccept h client_id state me
   runErrorT $ forever $ do
@@ -692,5 +694,5 @@ doCommands (main_thread, reaccept) (h, client_id) state = do
         acceptCommand accept_game_id (listToMaybe opt_color) params
       ["clean"] -> cleanCommand params
       ["stop"] -> stopCommand params
-      _ -> liftIO $ hPutStrLn h $ "501 unknown command"
+      _ -> sPutStrLn h $ "501 unknown command"
   return ()
