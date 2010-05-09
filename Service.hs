@@ -37,6 +37,7 @@ import System.Time
 import Game
 import Log
 import Rating
+import SNewLine
 import Version
 
 debugExpectSend :: Bool
@@ -260,14 +261,6 @@ pw_lookup ss name = lookup name pwf where
 instance Error ()
 
 type ELIO = ErrorT () LogIO
-
-sUnlines :: [String] -> String
-sUnlines = concatMap (++ "\r\n")
-
-sPutStrLn :: MonadLogIO m => Handle -> String -> m ()
-sPutStrLn h s = liftIO $ do
-  hPutStr h $ s ++ "\r\n"
-  hFlush h
 
 finish :: ELIO ()
 finish = throwError ()

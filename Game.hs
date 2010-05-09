@@ -15,6 +15,7 @@ import Text.Printf
 
 import Log
 import Board
+import SNewLine
 import State
 
 type CState = (Handle, Maybe Int)
@@ -115,7 +116,7 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
           let (captured, stop, problem') = runST (execute_move mov)
           let move_string = showMove mov
           logMsg move_string
-          liftIO $ hPutStrLn other_h $ "! " ++ move_string
+          sPutStrLn other_h $ "! " ++ move_string
           case stop of
             True -> do
               case captured of
@@ -138,11 +139,10 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
       problem' <- snapshotState state'
       return (capture undo, stop, problem')
     report code msg = do
-      liftIO $ do
-        hPutStrLn this_h $ "= " ++ msg
-        hPutStrLn other_h $ "= " ++ msg
-        hPutStrLn this_h $ code ++ " " ++ msg
-        hPutStrLn other_h $ code ++ " " ++ msg
+      sPutStrLn this_h $ "= " ++ msg
+      sPutStrLn other_h $ "= " ++ msg
+      sPutStrLn this_h $ code ++ " " ++ msg
+      sPutStrLn other_h $ code ++ " " ++ msg
       logMsg $ code ++ " " ++ msg
 
 run_game :: Problem -> TCState -> TCState -> LogIO Int
