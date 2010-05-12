@@ -6,6 +6,7 @@
 
 module Service (
   ServiceState,
+  upgradeService,
   initService,
   initServiceState,
   doCommands) where

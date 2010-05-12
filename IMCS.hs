@@ -27,6 +27,7 @@ import Service
     
 data Option = OptionPort
             | OptionInit
+            | OptionUpgrade
               deriving (Ord, Eq, Show)
 
 argd :: [ Arg Option ]
@@ -38,8 +39,13 @@ argd = [ Arg { argIndex = OptionPort,
          Arg { argIndex = OptionInit,
                argName = Just "init",
                argAbbr = Nothing,
+               argData = Nothing,
+               argDesc = "Setup server" },
+         Arg { argIndex = OptionUpgrade,
+               argName = Just "upgrade",
+               argAbbr = Nothing,
                argData = argDataOptional "admin-pw" ArgtypeString,
-               argDesc = "Setup or upgrade server" } ]
+               argDesc = "Upgrade server" } ]
 
 master_init :: Int -> LogIO Socket
 master_init port_num = do
@@ -78,10 +84,9 @@ main :: IO ()
 main = do
   a <- parseArgsIO ArgsComplete argd
   let port = fromJust (getArgInt a OptionPort)
-  case gotArg a OptionInit of
-     True -> do
-       let admin_pw = fromJust (getArgString a OptionInit)
-       initService port admin_pw
-     False ->
+  case (gotArg a OptionInit, getArgString a OptionUpgrade) of
+     (True, Just _) -> usageError "cannot both init and upgrade"
+     (False, Just admin_pw) -> upgradeService port admin_pw
+     (True, Nothing) -> initService port
+     (False, Nothing) ->
        withSocketsDo $ withLogDo stdout (run_service port)
-
