@@ -1,12 +1,16 @@
-Result codes for IMCS.  Lines ending in ...  will have
-following lines terminating with a period "." on a line by
-itself.
+Result codes for IMCS version 2.4.  Lines ending in ...
+will have following lines terminating with a period "." on a
+line by itself.
 
 100 imcs <version>
-101 game <id> waiting for offer acceptance
+101 accepting offer [version 2.3]
 102 received acceptance
-103 accepting offer
+103 game <id> waiting for offer acceptance [version 2.3]
 104 stopping server
+105 W accepting offer
+106 B accepting offer
+107 W game <id> waiting for offer acceptance
+108 B game <id> waiting for offer acceptance
 200 Goodbye
 201 hello <name>
 202 hello new user <name>
