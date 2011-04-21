@@ -128,19 +128,15 @@ touchService new_ok port admin_pw = do
       putStrLn $ "using existing version " ++ fversion
       terminate_existing_server
     "2.3" -> do
-      check_new_ok
       terminate_existing_server
       write_versionf
     "2.2" -> do
-      check_new_ok
       terminate_existing_server
       write_versionf
     "2.1" -> do
-      check_new_ok
       terminate_existing_server
       write_versionf
     "2.0" -> do
-      check_new_ok
       write_versionf
     "" -> do
       check_new_ok
