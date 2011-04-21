@@ -6,8 +6,8 @@
 
 module Service (
   ServiceState,
-  upgradeService,
   initService,
+  upgradeService,
   initServiceState,
   doCommands) where
 
@@ -99,42 +99,66 @@ data ServiceState = ServiceState {
       service_state_game_list :: [GamePost],
       service_state_pwf :: [PWFEntry] }
 
-initService :: Int -> String -> IO ()
-initService port admin_pw = do
+createVersion = do
+  createDirectory state_path 0o755
+  createDirectory private_path 0o700
+  createDirectory log_path 0o755
+  h <- openFile pwf_path AppendMode
+  hClose h
+  write_versionf
+
+initService :: Int -> IO ()
+initService port = do
+  catch try_to_connect (\_ -> return ())
+  createVersion
+  where
+    try_to_connect = do
+      h <- connectTo "127.0.0.1" $ PortNumber $ fromIntegral port
+      hClose h
+      error "cannot init: server is running"
+
+upgradeService :: Int -> String -> IO ()
+upgradeService = touchService False
+
+touchService :: Bool -> Int -> String -> IO ()
+touchService new_ok port admin_pw = do
   fversion <- read_versionf
   case fversion of
     "2.4" -> do
       putStrLn $ "using existing version " ++ fversion
       terminate_existing_server
     "2.3" -> do
+      check_new_ok
       terminate_existing_server
       write_versionf
     "2.2" -> do
+      check_new_ok
       terminate_existing_server
       write_versionf
     "2.1" -> do
+      check_new_ok
       terminate_existing_server
       write_versionf
-    "2.0" ->
+    "2.0" -> do
+      check_new_ok
       write_versionf
     "" -> do
+      check_new_ok
       to_v2_0
       write_versionf
     v -> error $ "unknown version " ++ v
   where
+    check_new_ok
+      | new_ok = return ()
+      | otherwise = error "refusing to upgrade from old version"
     to_v2_0 = do
        game_id <- read_game_id
        case game_id of
          1 -> to_v2_0_from_v1_0
          _ -> to_v2_0_from_v1_4
        write_versionf
-    to_v2_0_from_v1_0 = do
-       createDirectory state_path 0o755
-       createDirectory private_path 0o700
-       createDirectory log_path 0o755
-       h <- openFile pwf_path AppendMode
-       hClose h
-       write_versionf
+    to_v2_0_from_v1_0 =
+      createVersion
     to_v2_0_from_v1_4 = do
        old_pwf <- read_v1_4_pwf
        let new_pwf = map to_pwe old_pwf

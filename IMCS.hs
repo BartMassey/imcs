@@ -85,7 +85,7 @@ main = do
   a <- parseArgsIO ArgsComplete argd
   let port = fromJust (getArgInt a OptionPort)
   case (gotArg a OptionInit, getArgString a OptionUpgrade) of
-     (True, Just _) -> usageError "cannot both init and upgrade"
+     (True, Just _) -> usageError a "cannot both init and upgrade"
      (False, Just admin_pw) -> upgradeService port admin_pw
      (True, Nothing) -> initService port
      (False, Nothing) ->
