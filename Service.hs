@@ -621,10 +621,6 @@ acceptCommand accept_game_id opt_color
               liftIO $ putMVar state ss
               alsoLogMsg h err
             Right (other_name, other_color, wakeup, game_list') ->  do
-              liftIO $ putMVar state $
-                  ServiceState game_id game_list' pwf
-              logMsg $ "client " ++ client_id ++
-                       " accepts " ++ show other_name
               side <-
                 case (my_color, other_color) of
                   ("W", 'B') -> return $ Just ("105", "W")
@@ -646,12 +642,17 @@ acceptCommand accept_game_id opt_color
                               show colors
               case side of
                 Just (code, my_color') -> do
+                  liftIO $ putMVar state $
+                    ServiceState game_id game_list' pwf
+                  logMsg $ "client " ++ client_id ++
+                    " accepts " ++ show other_name
                   liftIO $ do
                     hPutStrLn h $ 
                       code ++ " " ++ my_color' ++ " accepting offer"
                     writeChan wakeup $ Wakeup my_name client_id h my_color'
                   finish
-                Nothing ->
+                Nothing -> do
+                  liftIO $ putMVar state ss
                   alsoLogMsg h $ "405 bad color " ++ my_color
 
 cleanCommand :: Command
