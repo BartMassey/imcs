@@ -11,7 +11,6 @@ where
 
 import Prelude hiding (catch)
 import Control.Concurrent
-import Control.Concurrent.Chan
 import Control.Monad.Error
 import Control.Monad.Reader
 import Data.IORef

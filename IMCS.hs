@@ -14,7 +14,6 @@
 --- for his nice service example.
 
 import Control.Concurrent
-import Control.Concurrent.MVar
 import Control.Monad
 import Data.Maybe
 import Network
@@ -72,7 +71,7 @@ run_service port = do
     ok <- liftIO $ readMVar reaccept
     case ok of
       True -> do
-        forkLogIO $ doCommands (mainThread, reaccept) client state
+        _ <- forkLogIO $ doCommands (mainThread, reaccept) client state
         return ()
       False -> do
         let (h, cid) = client

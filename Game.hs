@@ -6,8 +6,6 @@
 
 module Game(CState, doProblem, doGame) where
 
-import Data.Maybe
-import Control.Monad
 import Control.Monad.ST
 import System.IO
 import System.Time

@@ -14,6 +14,7 @@ import System.IO
 
 import Log
 
+sNewLine :: String
 sNewLine = "\r\n"
 
 sUnlines :: [String] -> String

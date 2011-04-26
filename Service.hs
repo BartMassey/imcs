@@ -14,12 +14,9 @@ module Service (
 import Prelude hiding (catch)
 
 import Control.Concurrent
-import Control.Concurrent.Chan
-import Control.Concurrent.MVar
 import Control.Exception (evaluate, throw)
 import Control.Monad
 import Control.Monad.Error
-import Control.Monad.Trans
 import Data.Char
 import Data.IORef
 import Data.List
@@ -70,35 +67,36 @@ default_time = Just 300000
 
 data Wakeup =
     Wakeup {
-      wakeup_name :: String,
-      wakeup_client_id :: String,
-      wakeup_handle :: Handle,
-      wakeup_color :: String }
+      _wakeup_name :: String,
+      _wakeup_client_id :: String,
+      _wakeup_handle :: Handle,
+      _wakeup_color :: String }
   | Nevermind
 
 data GamePost =
     GameResv {
-      game_resv_game_id :: Int,
+      _game_resv_game_id :: Int,
       game_resv_name :: String,
-      game_resv_client_id :: String,
-      game_resv_side :: Char,
+      _game_resv_client_id :: String,
+      _game_resv_side :: Char,
       game_resv_wakeup :: Chan Wakeup }
   | InProgress {
-      in_progress_game_id :: Int,
-      in_progress_name_white :: String,
-      in_progress_name_black :: String,
+      _in_progress_game_id :: Int,
+      _in_progress_name_white :: String,
+      _in_progress_name_black :: String,
       in_progress_wakeup :: MVar () }
 
 data PWFEntry = PWFEntry {
-      pwf_entry_name :: String,
-      pwf_entry_password :: String,
-      pwf_entry_rating :: Rating }
+      _pwf_entry_name :: String,
+      _pwf_entry_password :: String,
+      _pwf_entry_rating :: Rating }
 
 data ServiceState = ServiceState {
       service_state_game_id :: Int,
       service_state_game_list :: [GamePost],
       service_state_pwf :: [PWFEntry] }
 
+createVersion :: IO ()
 createVersion = do
   createDirectory state_path 0o755
   createDirectory private_path 0o700
@@ -282,9 +280,9 @@ pw_lookup :: ServiceState -> String -> Maybe (String, Rating)
 pw_lookup ss name = lookup name pwf where
     pwf = map (\(PWFEntry n p r) -> (n, (p, r))) $ service_state_pwf ss
 
-instance Error ()
-
 type ELIO = ErrorT () LogIO
+
+instance Error ()
 
 finish :: ELIO ()
 finish = throwError ()
@@ -464,7 +462,7 @@ check_color (Just "B") = Just "B"
 check_color (Just "w") = Just "W"
 check_color (Just "b") = Just "B"
 check_color (Just "?") = Just "?"
-check_color (Just c) = Nothing
+check_color (Just _) = Nothing
 
 offerCommand :: Maybe String -> Command
 offerCommand opt_color (CS {cs_h = h, cs_client_id = client_id,
@@ -590,10 +588,6 @@ offerCommand opt_color (CS {cs_h = h, cs_client_id = client_id,
             Nevermind ->
               alsoLogMsg h "421 offer countermanded"
       where
-        valid_color "W" = True
-        valid_color "B" = True
-        valid_color "?" = True
-        valid_color _ = False
         sort_colors (player_l, name_l, color_l)
                     (player_r, name_r, color_r) =
             case (color_l, color_r) of
@@ -694,7 +688,7 @@ stopCommand (CS {cs_h = h, cs_state = state, cs_me = me,
       sPutStrLn h "104 stopping server"
       liftIO $ do
         ServiceState game_id game_list pwf <- takeMVar state
-        takeMVar reaccept
+        _ <- takeMVar reaccept
         putMVar reaccept False
         let ss' = ServiceState game_id [] pwf
         putMVar state ss'
@@ -716,7 +710,7 @@ doCommands (main_thread, reaccept) (h, client_id) state = do
   sPutStrLn h $ "100 imcs " ++ version
   me <- liftIO $ newIORef Nothing
   let params = CS main_thread reaccept h client_id state me
-  runErrorT $ forever $ do
+  _ <- runErrorT $ forever $ do
     line <- liftIO $ hGetLine h
     case words line of
       [] -> return ()
