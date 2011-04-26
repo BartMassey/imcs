@@ -5,7 +5,7 @@ line by itself.
 100 imcs <version>
 101 accepting offer [version 2.3]
 102 received acceptance
-103 game <id> waiting for offer acceptance [version 2.3]
+103 game <id> waiting for offer acceptance [version 2.3, 2.4 w/ ?]
 104 stopping server
 105 W accepting offer
 106 B accepting offer

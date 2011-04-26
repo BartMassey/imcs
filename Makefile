@@ -5,7 +5,7 @@
 # distribution of this software for license terms.
 
 HC = ghc
-HCFLAGS = # -O2 # -prof -auto-all # -debug # -Wall 
+HCFLAGS = -Wall # -O2 # -prof -auto-all # -debug # -Wall 
 SRCS = Board.hs Game.hs IMCS.hs Log.hs Rating.hs \
        Service.hs SNewLine.hs State.hs Version.hs
 

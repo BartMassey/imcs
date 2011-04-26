@@ -461,6 +461,8 @@ check_color :: Maybe String -> Maybe String
 check_color Nothing = Just "?"
 check_color (Just "W") = Just "W"
 check_color (Just "B") = Just "B"
+check_color (Just "w") = Just "W"
+check_color (Just "b") = Just "B"
 check_color (Just "?") = Just "?"
 check_color (Just c) = Nothing
 
@@ -490,8 +492,10 @@ offerCommand opt_color (CS {cs_h = h, cs_client_id = client_id,
 
             putMVar state service_state'
             let result_code = case my_color of
+                                "?" -> "103 "
                                 "W" -> "107 "
                                 "B" -> "108 "
+                                _ -> error "internal error: unexpected color"
             hPutStrLn h $ result_code ++ my_color ++ " game " ++
                           show game_id ++
                           " waiting for offer acceptance"
@@ -600,7 +604,7 @@ offerCommand opt_color (CS {cs_h = h, cs_client_id = client_id,
               ("W", "?") -> left
               ("B", "?") -> right
               ("?", "?") -> do
-                dirn <- liftIO $ randomRIO (0, 2::Int)
+                dirn <- liftIO $ randomRIO (0, 1::Int)
                 case dirn of
                   0 -> left
                   1 -> right
@@ -639,18 +643,24 @@ acceptCommand accept_game_id opt_color
                   ServiceState game_id game_list' pwf
               logMsg $ "client " ++ client_id ++
                        " accepts " ++ show other_name
-              liftIO $ do
-                hPutStrLn h $
-                  case my_color of
-                    "W" -> "105 W accepting offer"
-                    "B" -> "106 B accepting offer"
-                    "?" -> case other_color of
-                             'W' -> "106 B accepting offer"
-                             'B' -> "105 W accepting offer"
-                             _ -> error "internal error: bad offer color"
-                    _ -> error "internal error: bad accept color"
-                writeChan wakeup $ Wakeup my_name client_id h my_color
-              finish
+              let side =
+                    case (my_color, other_color) of
+                      ("W", 'B') -> Just ("105", "W")
+                      ("B", 'W') -> Just ("106", "B")
+                      ("?", 'B') -> Just ("105", "W")
+                      ("?", 'W') -> Just ("106", "B")
+                      ("W", 'W') -> Nothing
+                      ("B", 'B') -> Nothing
+                      _ -> error "internal error: bad accept color"
+              case side of
+                Just (code, my_color') -> do
+                  liftIO $ do
+                    hPutStrLn h $ 
+                      code ++ " " ++ my_color' ++ " accepting offer"
+                    writeChan wakeup $ Wakeup my_name client_id h my_color'
+                  finish
+                Nothing ->
+                  alsoLogMsg h $ "405 bad color " ++ my_color
 
 cleanCommand :: Command
 cleanCommand (CS {cs_h = h, cs_state = state, cs_me = me}) = do
