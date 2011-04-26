@@ -37,6 +37,7 @@ line by itself.
 406 must set name first using me command
 407 bad game id
 408 no such game
+409 bad arguments
 420 fatal IO error
 421 offer countermanded
 499 internal error: <reason>

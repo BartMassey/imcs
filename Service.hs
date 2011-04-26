@@ -324,7 +324,7 @@ helpCommand (CS {cs_h = h, cs_me = me}) = do
     " list: list available games in format",
     "       <id> <opponent-name> <opponent-color> <opponent-rating>",
     " ratings: list player ratings (top 10 plus own)",
-    " offer [<color>]: offer a game as W, B, or ?",
+    " offer [<color>] [<time-controls>]: offer a game as W, B, or ?",
     " accept <id> [<color>]: accept a game with an opponent",
     " clean: cancel all outstanding offers of current player" ] ++
     (case maybe_my_name of
@@ -464,9 +464,10 @@ check_color (Just "b") = Just "B"
 check_color (Just "?") = Just "?"
 check_color (Just _) = Nothing
 
-offerCommand :: Maybe String -> Command
-offerCommand opt_color (CS {cs_h = h, cs_client_id = client_id,
-                            cs_state = state, cs_me = me}) = do
+offerCommand' :: Maybe String -> Maybe Int -> Command
+offerCommand' opt_color opt_time 
+  (CS {cs_h = h, cs_client_id = client_id,
+       cs_state = state, cs_me = me}) = do
   case check_color opt_color of
     Nothing ->
       sPutStrLn h $ "405 bad color " ++ fromJust opt_color
@@ -598,6 +599,30 @@ offerCommand opt_color (CS {cs_h = h, cs_client_id = client_id,
               left = ((player_l, name_l), (player_r, name_r))
               right = ((player_r, name_r), (player_l, name_l))
 
+data OfferArg = OfferArgColor String | OfferArgTime Int | OfferArgError
+
+offerCommand :: [String] -> Command
+offerCommand args cs =
+  case map map_arg args of
+    [OfferArgColor c, OfferArgTime t] -> 
+      offerCommand' (Just c) (Just t) cs
+    [OfferArgTime t, OfferArgColor c] -> 
+      offerCommand' (Just c) (Just t) cs
+    [OfferArgTime t] ->
+      offerCommand' Nothing (Just t) cs
+    [OfferColor c] ->
+      offerCommand' (Just c) Nothing cs
+    [] ->
+      offerCommand' Nothing Nothing cs
+    _ -> hPutStrLn (cs_h cs) "409 bad argument(s)"
+  where
+    map_arg arg
+      | isTime = OfferArgTime parsedTime
+      | isColor = OfferArgColor arg
+      | _ = OfferArgError
+      where
+        HERE
+
 acceptCommand :: String -> Maybe String -> Command
 acceptCommand accept_game_id opt_color
               (CS {cs_h = h, cs_client_id = client_id,
@@ -720,8 +745,7 @@ doCommands (main_thread, reaccept) (h, client_id) state = do
       ["password", password] -> passwordCommand password params
       ["list"] -> listCommand params
       ["ratings"] -> ratingsCommand params
-      ("offer" : opt_color) | length opt_color <= 1 ->
-        offerCommand (listToMaybe opt_color) params
+      ("offer" : args) -> offerCommand args params
       ("accept" : accept_game_id : opt_color) | length opt_color <= 1 ->
         acceptCommand accept_game_id (listToMaybe opt_color) params
       ["clean"] -> cleanCommand params
