@@ -31,6 +31,7 @@ import System.IO.Error
 import System.Posix.Files
 import System.Posix.Directory
 import System.Time
+import Text.Printf
 import Text.Regex.Posix
 
 import Game
@@ -76,10 +77,11 @@ data Wakeup =
 
 data GamePost =
     GameResv {
-      _game_resv_game_id :: Int,
+      game_resv_game_id :: Int,
       game_resv_name :: String,
       _game_resv_client_id :: String,
       _game_resv_side :: Char,
+      _game_resv_time_controls :: (Int, Int),
       game_resv_wakeup :: Chan Wakeup }
   | InProgress {
       _in_progress_game_id :: Int,
@@ -123,9 +125,12 @@ touchService :: Bool -> Int -> String -> IO ()
 touchService new_ok port admin_pw = do
   fversion <- read_versionf
   case fversion of
-    "2.4" -> do
+    "2.5" -> do
       putStrLn $ "using existing version " ++ fversion
       terminate_existing_server
+    "2.4" -> do
+      terminate_existing_server
+      write_versionf
     "2.3" -> do
       terminate_existing_server
       write_versionf
@@ -289,17 +294,19 @@ finish :: ELIO ()
 finish = throwError ()
 
 game_lookup :: [GamePost] -> Int
-            -> ELIO (Either String (String, Char, Chan Wakeup, [GamePost]))
+            -> ELIO (Either String 
+                     (GamePost, [GamePost]))
 game_lookup game_list game_id = do
   case partition waiting_game game_list of
-    ([GameResv _ other_name _ side wakeup], rest) ->
-        return $ Right (other_name, side, wakeup, rest)
+    ([g], rest) ->
+        return $ Right (g, rest)
     ([], _) -> 
         return $ Left "408 no such game"
     _ ->
         return $ Left "499 internal error: multiple games with same id in list"
   where
-    waiting_game (GameResv game_id' _ _ _ _) | game_id' == game_id = True
+    waiting_game (GameResv {game_resv_game_id = game_id'}) 
+      | game_id' == game_id = True
     waiting_game _ = False
 
 data CommandState = CS {
@@ -407,18 +414,24 @@ passwordCommand password (CS {cs_h = h, cs_client_id = client_id,
           logMsg $ "changed password for client " ++ client_id ++
                    " user " ++ my_name
 
+show_time :: Int -> String
+show_time t = 
+  printf "%d:%02d" (t `div` 60000) ((t `div` 1000) `mod` 60)
+
 listCommand :: Command
 listCommand (CS {cs_h = h, cs_state = state}) = do
   ss@(ServiceState _ game_list _) <- liftIO $ readMVar state
-  sPutStrLn h "211 available games"
+  sPutStrLn h $ printf "211 %d available games" (length game_list)
   let lookup_rating other_name =
           case pw_lookup ss other_name of
             Nothing -> "?"
             Just (_, r) -> show r
-  let output_game (GameResv game_id other_name _ color _) =
+  let output_game (GameResv game_id other_name _ color (t1, t2) _) =
           sPutStrLn h $ " " ++ show game_id ++
                         " " ++ other_name ++
                         " " ++ [color] ++
+                        " " ++ show_time t1 ++
+                        " " ++ show_time t2 ++
                         " " ++ lookup_rating other_name ++
                         " [offer]"
       output_game (InProgress game_id name_white name_black _) =
@@ -484,7 +497,7 @@ offerCommand' opt_color opt_times
           ss <- liftIO $ takeMVar state
           let ServiceState game_id game_list pwf = ss
           let new_game =
-                GameResv game_id my_name client_id (head my_color) wakeup
+                GameResv game_id my_name client_id (head my_color) tc wakeup
           let service_state' =
                 ServiceState (game_id + 1) (game_list ++ [new_game]) pwf
           liftIO $ do
@@ -503,10 +516,6 @@ offerCommand' opt_color opt_times
           case w of
             Wakeup other_name other_id other_h other_color -> do
               sPutStrLn h "102 received acceptance"
-              let (my_time, other_time) =
-                    case opt_times of
-                      Just ts -> ts
-                      Nothing -> (default_time, default_time)
               let my_info = ((h, Just my_time),
                              my_name, my_color)
               let other_info = ((other_h, Just other_time),
@@ -603,6 +612,12 @@ offerCommand' opt_color opt_times
             where
               left = ((player_l, name_l), (player_r, name_r))
               right = ((player_r, name_r), (player_l, name_l))
+  where
+    tc@(my_time, other_time) =
+      case opt_times of
+        Just ts -> ts
+        Nothing -> (default_time, default_time)
+
 
 offerCommand :: [String] -> Command
 offerCommand args cs = do
@@ -636,7 +651,7 @@ offerCommand args cs = do
             _ -> Just (60000 * read f1 + 1000 * read f2)
         _ -> error "internal error: parse_time weirdness"
       where
-        timeRE = "^([0-9]+)((:[0-9][0-9])?)$"
+        timeRE = "^([0-9]+)(:([0-9][0-9]))?$"
 
 acceptCommand :: String -> Maybe String -> Command
 acceptCommand accept_game_id opt_color
@@ -660,7 +675,9 @@ acceptCommand accept_game_id opt_color
             Left err -> do
               liftIO $ putMVar state ss
               alsoLogMsg h err
-            Right (other_name, other_color, wakeup, game_list') ->  do
+            Right (GameResv _ other_name _ other_color 
+                            (other_time, my_time) wakeup, 
+                   game_list') ->  do
               side <-
                 case (my_color, other_color) of
                   ("W", 'B') -> return $ Just ("105", "W")
@@ -688,12 +705,15 @@ acceptCommand accept_game_id opt_color
                     " accepts " ++ show other_name
                   liftIO $ do
                     hPutStrLn h $ 
-                      code ++ " " ++ my_color' ++ " accepting offer"
+                      code ++ " " ++ my_color' ++ 
+                      " " ++ show_time my_time ++ " " ++
+                      show_time other_time ++ " accepting offer"
                     writeChan wakeup $ Wakeup my_name client_id h my_color'
                   finish
                 Nothing -> do
                   liftIO $ putMVar state ss
                   alsoLogMsg h $ "405 bad color " ++ my_color
+            _ -> error "internal error: bad game lookup"
 
 cleanCommand :: Command
 cleanCommand (CS {cs_h = h, cs_state = state, cs_me = me}) = do
