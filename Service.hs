@@ -31,7 +31,7 @@ import System.IO.Error
 import System.Posix.Files
 import System.Posix.Directory
 import System.Time
-import Text.Regex.Posix
+import Text.Regex.TDFA
 
 import Game
 import Log
@@ -604,36 +604,40 @@ offerCommand' opt_color opt_times
               left = ((player_l, name_l), (player_r, name_r))
               right = ((player_r, name_r), (player_l, name_l))
 
-data OfferArg = OfferArgColor String | OfferArgTime Int | OfferArgError
-
 offerCommand :: [String] -> Command
-offerCommand args cs =
-  case map map_arg args of
-    [OfferArgColor c, OfferArgTime t] -> 
-      offerCommand' (Just c) (Just (t, t)) cs
-    [OfferArgTime t] ->
-      offerCommand' Nothing (Just (t, t)) cs
-    [OfferArgColor c] ->
-      offerCommand' (Just c) Nothing cs
-    [] ->
-      offerCommand' Nothing Nothing cs
+offerCommand args cs = do
+  let (opt_color, rest) = parse_color args
+  let (opt_times, rest') = parse_times rest
+  case rest' of
+    Just [] -> offerCommand' opt_color opt_times cs
     _ -> liftIO $ hPutStrLn (cs_h cs) "409 bad argument(s)"
   where
-    map_arg arg
-      | isTime = OfferArgTime parsedTime
-      | isColor = OfferArgColor parsedColor
-      | otherwise = OfferArgError
+    parse_color [] = (Nothing, Just [])
+    parse_color (arg : rest) =
+      case check_color arg of
+        Just c -> (Just c, Just rest)
+        Nothing -> (Nothing, Just [])
+    parse_times Nothing = (Nothing, Nothing)
+    parse_times (Just []) = (Nothing, Just [])
+    parse_times (Just (arg : rest)) =
+      let (t1, rest') = parse_time arg rest in
+      case rest' of
+        Just [] -> (Just (t1, t1), Just [])
+        Just [arg'] -> 
+          let (t2, rest'') = parse_time arg' rest' in
+          case rest'' of
+            Just [] -> (Just (t1, t2), Just [])
+            _ -> (Nothing, Nothing)
+        _ -> (Nothing, Nothing)
       where
-        isColor = isJust $ check_color (Just arg)
-        parsedColor = fromJust $ check_color (Just arg)
         timeRE = "^([0-9]+)((:[0-9][0-9])?)$"
-        isTime = arg =~ timeRE
-        parsedTime =
-          let ("", _, "", [f1, _, f2]) = 
-                arg =~ timeRE :: (String, String, String, [String]) in
-          case f2 of
-            "" -> 1000 * read f1
-            _ -> 60000 * read f1 + 1000 * read f2
+        parse_time arg' rest' =
+          case getAllTextSubmatches (arg' =~ timeRE) of
+            [] -> (Nothing, Nothing)
+            [_, f1, _, f2] ->
+              case f2 of
+                "" -> (1000 * read f1, Just rest')
+                _ -> (60000 * read f1 + 1000 * read f2, Just rest')
 
 acceptCommand :: String -> Maybe String -> Command
 acceptCommand accept_game_id opt_color
