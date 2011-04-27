@@ -31,7 +31,7 @@ import System.IO.Error
 import System.Posix.Files
 import System.Posix.Directory
 import System.Time
-import Text.Regex.TDFA
+import Text.Regex.Posix
 
 import Game
 import Log
@@ -323,9 +323,9 @@ helpCommand (CS {cs_h = h, cs_me = me}) = do
     " register <name> <password>: register a new name and log in",
     " password <password>: change password",
     " list: list available games in format",
-    "       <id> <opponent-name> <opponent-color> <opponent-rating>",
+    "        <id> <opponent-name> <opponent-color> <opponent-rating>",
     " ratings: list player ratings (top 10 plus own)",
-    " offer [<color>] [<time>]: offer a game as W, B, or ?",
+    " offer [<color>] [<time> [<time>]]: offer a game with given constraints",
     " accept <id> [<color>]: accept a game with an opponent",
     " clean: cancel all outstanding offers of current player" ] ++
     (case maybe_my_name of
@@ -607,37 +607,36 @@ offerCommand' opt_color opt_times
 offerCommand :: [String] -> Command
 offerCommand args cs = do
   let (opt_color, rest) = parse_color args
-  let (opt_times, rest') = parse_times rest
-  case rest' of
-    Just [] -> offerCommand' opt_color opt_times cs
+  let maybe_times = rest >>= parse_times
+  case maybe_times of
+    Just opt_times -> offerCommand' opt_color opt_times cs
     _ -> liftIO $ hPutStrLn (cs_h cs) "409 bad argument(s)"
   where
     parse_color [] = (Nothing, Just [])
-    parse_color (arg : rest) =
-      case check_color arg of
+    parse_color args'@(arg : rest) =
+      case check_color (Just arg) of
         Just c -> (Just c, Just rest)
-        Nothing -> (Nothing, Just [])
-    parse_times Nothing = (Nothing, Nothing)
-    parse_times (Just []) = (Nothing, Just [])
-    parse_times (Just (arg : rest)) =
-      let (t1, rest') = parse_time arg rest in
-      case rest' of
-        Just [] -> (Just (t1, t1), Just [])
-        Just [arg'] -> 
-          let (t2, rest'') = parse_time arg' rest' in
-          case rest'' of
-            Just [] -> (Just (t1, t2), Just [])
-            _ -> (Nothing, Nothing)
-        _ -> (Nothing, Nothing)
+        Nothing -> (Nothing, Just args')
+    parse_times [] = 
+      return Nothing
+    parse_times [a] = do
+      t <- parse_time a
+      return $ Just (t, t)
+    parse_times [a1, a2] = do
+      t1 <- parse_time a1
+      t2 <- parse_time a2
+      return $ Just (t1, t2)
+    parse_times _ = Nothing
+    parse_time a =
+      case getAllTextSubmatches (a =~ timeRE) of
+        [] -> Nothing
+        [_, f1, _, f2] ->
+          case f2 of
+            "" -> Just (1000 * read f1)
+            _ -> Just (60000 * read f1 + 1000 * read f2)
+        _ -> error "internal error: parse_time weirdness"
       where
         timeRE = "^([0-9]+)((:[0-9][0-9])?)$"
-        parse_time arg' rest' =
-          case getAllTextSubmatches (arg' =~ timeRE) of
-            [] -> (Nothing, Nothing)
-            [_, f1, _, f2] ->
-              case f2 of
-                "" -> (1000 * read f1, Just rest')
-                _ -> (60000 * read f1 + 1000 * read f2, Just rest')
 
 acceptCommand :: String -> Maybe String -> Command
 acceptCommand accept_game_id opt_color
