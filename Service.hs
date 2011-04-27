@@ -31,6 +31,7 @@ import System.IO.Error
 import System.Posix.Files
 import System.Posix.Directory
 import System.Time
+import Text.Regex.Posix
 
 import Game
 import Log
@@ -62,8 +63,8 @@ pwf_tmp_path = private_path </> "passwd.tmp"
 log_path :: FilePath
 log_path = state_path </> "log"
 
-default_time :: Maybe Int
-default_time = Just 300000
+default_time :: Int
+default_time = 300000
 
 data Wakeup =
     Wakeup {
@@ -324,7 +325,7 @@ helpCommand (CS {cs_h = h, cs_me = me}) = do
     " list: list available games in format",
     "       <id> <opponent-name> <opponent-color> <opponent-rating>",
     " ratings: list player ratings (top 10 plus own)",
-    " offer [<color>] [<time-controls>]: offer a game as W, B, or ?",
+    " offer [<color>] [<time>]: offer a game as W, B, or ?",
     " accept <id> [<color>]: accept a game with an opponent",
     " clean: cancel all outstanding offers of current player" ] ++
     (case maybe_my_name of
@@ -464,8 +465,8 @@ check_color (Just "b") = Just "B"
 check_color (Just "?") = Just "?"
 check_color (Just _) = Nothing
 
-offerCommand' :: Maybe String -> Maybe Int -> Command
-offerCommand' opt_color opt_time 
+offerCommand' :: Maybe String -> Maybe (Int, Int) -> Command
+offerCommand' opt_color opt_times 
   (CS {cs_h = h, cs_client_id = client_id,
        cs_state = state, cs_me = me}) = do
   case check_color opt_color of
@@ -502,9 +503,13 @@ offerCommand' opt_color opt_time
           case w of
             Wakeup other_name other_id other_h other_color -> do
               sPutStrLn h "102 received acceptance"
-              let my_info = ((h, default_time),
+              let (my_time, other_time) =
+                    case opt_times of
+                      Just ts -> ts
+                      Nothing -> (default_time, default_time)
+              let my_info = ((h, Just my_time),
                              my_name, my_color)
-              let other_info = ((other_h, default_time),
+              let other_info = ((other_h, Just other_time),
                                 other_name, other_color)
               let ((p1, p1_name), (p2, p2_name)) =
                     sort_colors my_info other_info
@@ -605,23 +610,30 @@ offerCommand :: [String] -> Command
 offerCommand args cs =
   case map map_arg args of
     [OfferArgColor c, OfferArgTime t] -> 
-      offerCommand' (Just c) (Just t) cs
-    [OfferArgTime t, OfferArgColor c] -> 
-      offerCommand' (Just c) (Just t) cs
+      offerCommand' (Just c) (Just (t, t)) cs
     [OfferArgTime t] ->
-      offerCommand' Nothing (Just t) cs
-    [OfferColor c] ->
+      offerCommand' Nothing (Just (t, t)) cs
+    [OfferArgColor c] ->
       offerCommand' (Just c) Nothing cs
     [] ->
       offerCommand' Nothing Nothing cs
-    _ -> hPutStrLn (cs_h cs) "409 bad argument(s)"
+    _ -> liftIO $ hPutStrLn (cs_h cs) "409 bad argument(s)"
   where
     map_arg arg
       | isTime = OfferArgTime parsedTime
-      | isColor = OfferArgColor arg
-      | _ = OfferArgError
+      | isColor = OfferArgColor parsedColor
+      | otherwise = OfferArgError
       where
-        HERE
+        isColor = isJust $ check_color (Just arg)
+        parsedColor = fromJust $ check_color (Just arg)
+        timeRE = "^([0-9]+)((:[0-9][0-9])?)$"
+        isTime = arg =~ timeRE
+        parsedTime =
+          let ("", _, "", [f1, _, f2]) = 
+                arg =~ timeRE :: (String, String, String, [String]) in
+          case f2 of
+            "" -> 1000 * read f1
+            _ -> 60000 * read f1 + 1000 * read f2
 
 acceptCommand :: String -> Maybe String -> Command
 acceptCommand accept_game_id opt_color
