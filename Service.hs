@@ -118,11 +118,11 @@ initService port = do
       hClose h
       error "cannot init: server is running"
 
-upgradeService :: Int -> String -> IO ()
+upgradeService :: Int -> Maybe String -> IO ()
 upgradeService = touchService False
 
-touchService :: Bool -> Int -> String -> IO ()
-touchService new_ok port admin_pw = do
+touchService :: Bool -> Int -> Maybe String -> IO ()
+touchService new_ok port opt_admin_pw = do
   fversion <- read_versionf
   case fversion of
     "2.5" -> do
@@ -165,40 +165,43 @@ touchService new_ok port admin_pw = do
        write_pwf new_pwf
        where
          to_pwe (name, password) = PWFEntry name password baseRating
-    terminate_existing_server = do
-      let try_to_connect = do
-            h <- connectTo "127.0.0.1" $ PortNumber $ fromIntegral port
-            let expect code failure = do
-                  when debugExpectSend $ putStrLn $ "expecting " ++ code
-                  let process_line = do
-                        line <- hGetLine h
-                        when debugExpectSend $ putStrLn $ "got " ++ line
-                        case words line of
-                          (code' : _) | code == code' -> return ()
-                          _ ->  do 
-                            let msg = failure ++ ": " ++ line
-                            let e = mkIOError userErrorType
-                                              msg (Just h) Nothing
+    terminate_existing_server =
+      case opt_admin_pw of
+        Nothing -> return ()
+        Just admin_pw -> do
+          let try_to_connect = do
+                h <- connectTo "127.0.0.1" $ PortNumber $ fromIntegral port
+                let expect code failure = do
+                      when debugExpectSend $ putStrLn $ "expecting " ++ code
+                      let process_line = do
+                            line <- hGetLine h
+                            when debugExpectSend $ putStrLn $ "got " ++ line
+                            case words line of
+                              (code' : _) | code == code' -> return ()
+                              _ ->  do 
+                                let msg = failure ++ ": " ++ line
+                                let e = mkIOError userErrorType
+                                                  msg (Just h) Nothing
+                                throw e
+                      let io_fail e = do
+                            putStrLn $ "IO Error: exiting"
                             throw e
-                  let io_fail e = do
-                        putStrLn $ "IO Error: exiting"
-                        throw e
-                  catch process_line io_fail
-            let send s = do
-                  when debugExpectSend $ putStrLn $ "sending " ++ s
-                  hPutStrLn h s
-            expect "100" "unexpected server hello"
-            send $ "me admin " ++ admin_pw
-            expect "201" "could not become admin"
-            send "stop"
-            expect "104" "server did not seem to be stopping"
-            expect "205" "server cannot or would not stop"
-            hClose h
-            return ()
-      let fail_to_connect e = do
-            putStrLn $ "could not connect to localhost:" ++ show port ++
-                       " : " ++ show e
-      catch try_to_connect fail_to_connect
+                      catch process_line io_fail
+                let send s = do
+                      when debugExpectSend $ putStrLn $ "sending " ++ s
+                      hPutStrLn h s
+                expect "100" "unexpected server hello"
+                send $ "me admin " ++ admin_pw
+                expect "201" "could not become admin"
+                send "stop"
+                expect "104" "server did not seem to be stopping"
+                expect "205" "server cannot or would not stop"
+                hClose h
+                return ()
+          let fail_to_connect e = do
+                putStrLn $ "could not find server, continuing upgrade:" ++
+                           show port ++ " : " ++ show e
+          catch try_to_connect fail_to_connect
 
 read_versionf :: IO String
 read_versionf = catch read_version_file give_up where

@@ -25,9 +25,10 @@ import Log
 import Service
     
 data Option = OptionPort
-            | OptionInit
+            | OptionInit      -- XXX order matters: first mode
+            | OptionUpgradeRunning
             | OptionUpgrade
-              deriving (Ord, Eq, Show)
+              deriving (Ord, Eq, Enum, Show)
 
 argd :: [ Arg Option ]
 argd = [ Arg { argIndex = OptionPort,
@@ -40,10 +41,15 @@ argd = [ Arg { argIndex = OptionPort,
                argAbbr = Nothing,
                argData = Nothing,
                argDesc = "Setup server" },
+         Arg { argIndex = OptionUpgradeRunning,
+               argName = Just "upgrade-running",
+               argAbbr = Nothing,
+               argData = argDataOptional "admin-pw" ArgtypeString,
+               argDesc = "Upgrade running server" },
          Arg { argIndex = OptionUpgrade,
                argName = Just "upgrade",
                argAbbr = Nothing,
-               argData = argDataOptional "admin-pw" ArgtypeString,
+               argData = Nothing,
                argDesc = "Upgrade server" } ]
 
 master_init :: Int -> LogIO Socket
@@ -83,9 +89,18 @@ main :: IO ()
 main = do
   a <- parseArgsIO ArgsComplete argd
   let port = fromJust (getArgInt a OptionPort)
-  case (gotArg a OptionInit, getArgString a OptionUpgrade) of
-     (True, Just _) -> usageError a "cannot both init and upgrade"
-     (False, Just admin_pw) -> upgradeService port admin_pw
-     (True, Nothing) -> initService port
-     (False, Nothing) ->
-       withSocketsDo $ withLogDo stdout (run_service port)
+  let admin_flags = enumFrom OptionInit
+  if length (filter id $ map (gotArg a) admin_flags) > 1
+    then usageError a "multiple init/upgrade options specified"
+    else run_in_mode a port
+         where
+           run_in_mode a port
+             | gotArg a OptionInit = 
+               initService port
+             | gotArg a OptionUpgradeRunning = 
+               upgradeService port 
+                 (Just $ getRequiredArg a OptionUpgradeRunning)
+             | gotArg a OptionUpgrade = 
+               upgradeService port Nothing
+             | otherwise =
+               withSocketsDo $ withLogDo stdout (run_service port)
