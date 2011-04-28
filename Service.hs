@@ -546,13 +546,16 @@ offerCommand' opt_color opt_times
                     logMsg game_desc
                     logMsg date
                     score <- doGame p1 p2
-                    liftIO $ do
+                    when (p1_name /= p2_name && 
+                          my_time == default_time &&
+                          other_time == default_time) $ liftIO $ do
                       p1_rating <- lookup_rating p1_name
                       p2_rating <- lookup_rating p2_name
                       update_rating p1_name p1_rating
                         p2_rating score
                       update_rating p2_name p2_rating
                         p1_rating (-score)
+                    liftIO $ do
                       hClose h
                       hClose other_h
                     logMsg $ "client " ++ client_id ++ " closes"
