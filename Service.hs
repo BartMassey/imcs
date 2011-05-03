@@ -507,23 +507,25 @@ offerCommand' opt_color opt_times
             write_game_id (game_id + 1)   --- XXX failure hangs server
 
             putMVar state service_state'
-            let result_code = case my_color of
-                                "?" -> "103 "
-                                "W" -> "107 "
-                                "B" -> "108 "
-                                _ -> error "internal error: unexpected color"
-            hPutStrLn h $ result_code ++ my_color ++ " game " ++
+            hPutStrLn h $ "103 " ++
                           show game_id ++
-                          " waiting for offer acceptance"
+                          " game waiting for offer acceptance"
           w <- liftIO $ readChan wakeup
           case w of
             Wakeup other_name other_id other_h other_color -> do
-              sPutStrLn h "102 received acceptance"
+              let result_code = 
+                    case other_color of
+                      "W" -> "106 B "
+                      "B" -> "105 W "
+                      _ -> error "internal error: bad offer accept color"
+              sPutStrLn h $ result_code ++
+                show_time my_time ++ " " ++ show_time other_time ++ 
+                " game starts"
               let my_info = ((h, Just my_time),
-                             my_name, my_color)
+                             my_name, client_id, my_color)
               let other_info = ((other_h, Just other_time),
-                                other_name, other_color)
-              let ((p1, p1_name), (p2, p2_name)) =
+                                other_name, other_id, other_color)
+              let ((p1, p1_name, p1_id), (p2, p2_name, p2_id)) =
                     sort_colors my_info other_info
               wchan <- liftIO $ newEmptyMVar
               let ip = InProgress game_id p1_name p2_name wchan
@@ -533,10 +535,8 @@ offerCommand' opt_color opt_times
               liftIO $ putMVar state (ServiceState game_id'' gl' pwf'')
               let run_game = do
                     let game_desc = show game_id ++ ": " ++
-                                      my_name ++ "(" ++ client_id ++
-                                      ", " ++ my_color ++ ") vs " ++
-                                      other_name ++
-                                      "(" ++ other_id ++ ")"
+                                      p1_name ++ "(" ++ p1_id ++ ", W) vs " ++
+                                      other_name ++ "(" ++ p2_id ++ ")"
                     logMsg $ "game " ++ game_desc ++ " begins"
                     let path = log_path </> show game_id
                     game_log <- liftIO $ openFile path WriteMode
@@ -587,7 +587,7 @@ offerCommand' opt_color opt_times
                       close_it h' = 
                         catch (do
                                   hPutStrLn h'
-                                    "420 fatal IO error: exiting\r\n"
+                                    "X fatal IO error: exiting\r\n"
                                   hClose h')
                               (\_ -> return ())
               lift $ catchLogIO run_game clean_up
@@ -604,8 +604,8 @@ offerCommand' opt_color opt_times
             Nevermind ->
               alsoLogMsg h "421 offer countermanded"
       where
-        sort_colors (player_l, name_l, color_l)
-                    (player_r, name_r, color_r) =
+        sort_colors (player_l, name_l, id_l, color_l)
+                    (player_r, name_r, id_r, color_r) =
             case (color_l, color_r) of
               ("W", "B") -> left
               ("B", "W") -> right
@@ -616,8 +616,8 @@ offerCommand' opt_color opt_times
               colors -> error $ "internal error: bad offer colors " ++ 
                                 show colors
             where
-              left = ((player_l, name_l), (player_r, name_r))
-              right = ((player_r, name_r), (player_l, name_l))
+              left = ((player_l, name_l, id_l), (player_r, name_r, id_r))
+              right = ((player_r, name_r, id_r), (player_l, name_l, id_l))
   where
     tc@(my_time, other_time) =
       case opt_times of
@@ -713,7 +713,7 @@ acceptCommand accept_game_id opt_color
                     hPutStrLn h $ 
                       code ++ " " ++ my_color' ++ 
                       " " ++ show_time my_time ++ " " ++
-                      show_time other_time ++ " accepting offer"
+                      show_time other_time ++ " game starts"
                     writeChan wakeup $ Wakeup my_name client_id h my_color'
                   finish
                 Nothing -> do
