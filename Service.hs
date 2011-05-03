@@ -32,7 +32,7 @@ import System.Posix.Files
 import System.Posix.Directory
 import System.Time
 import Text.Printf
-import Text.Regex.Posix
+import Text.Regex.TDFA
 
 import Game
 import Log
