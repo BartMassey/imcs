@@ -29,10 +29,11 @@ read_move problem (handle, deadline) =
     microsecs =
       case deadline of
         Untimed -> -1
-        FirstMove t -> mktime t
-        TimeRemaining t -> mktime t
+        FirstMove _ -> mktime 15
+        TimeRemaining t -> mktime (t + 10000)
         where
-          mktime t = 1000 * fromIntegral t + 10000000
+          mktime :: Int -> Integer
+          mktime t = 1000 * fromIntegral t
     move_result Nothing = Timeout
     move_result (Just ["resign"]) = Resign
     move_result (Just ["!", move_word]) = process_move move_word
