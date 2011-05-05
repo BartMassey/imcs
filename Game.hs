@@ -6,6 +6,7 @@
 
 module Game(CState, doProblem, doGame) where
 
+import Control.Concurrent.Timeout
 import Control.Monad.ST
 import System.IO
 import System.Time
@@ -18,28 +19,36 @@ import State
 
 type CState = (Handle, Maybe Int)
 
-data MoveResult = Resign | InvalidMove | IllegalMove | GoodMove Move
+data MoveResult = Timeout | Resign | InvalidMove | IllegalMove | GoodMove Move
 
-read_move :: Problem -> Handle -> IO MoveResult
-read_move problem handle = do
-  move_str <- hGetLine handle
-  case words move_str of
-    ["resign"] -> return Resign
-    ["!", move_word] -> process_move move_word
-    [move_word] -> process_move move_word
-    _ -> return InvalidMove
-    where
-      process_move move_word = 
-          case readMove move_word of
-            Nothing -> return InvalidMove
-            Just mov -> case runST check_move of
-                          True -> return $ GoodMove mov
-                          False -> return IllegalMove
-                        where
-                          check_move = do
-                            state <- animateProblem problem
-                            candidates <- moves state
-                            return (elem mov candidates)
+read_move :: Problem -> (Handle, TimerState) -> IO MoveResult
+read_move problem (handle, deadline) =
+  (move_result . fmap words)  `fmap`
+    timeout microsecs (hGetLine handle)
+  where
+    microsecs =
+      case deadline of
+        Untimed -> -1
+        FirstMove t -> mktime t
+        TimeRemaining t -> mktime t
+        where
+          mktime t = 1000 * fromIntegral t + 10000000
+    move_result Nothing = Timeout
+    move_result (Just ["resign"]) = Resign
+    move_result (Just ["!", move_word]) = process_move move_word
+    move_result (Just [move_word]) = process_move move_word
+    move_result (Just _) = InvalidMove
+    process_move move_word = 
+      case readMove move_word of
+          Nothing -> InvalidMove
+          Just mov -> case runST check_move of
+                        True -> GoodMove mov
+                        False -> IllegalMove
+                      where
+                        check_move = do
+                          state <- animateProblem problem
+                          candidates <- moves state
+                          return (elem mov candidates)
 
 data TimerState = Untimed | FirstMove Int | TimeRemaining Int
 
@@ -77,23 +86,15 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
   alsoLogMsg this_h (showProblem problem)
   alsoLogMsg this_h (times_fmt this_t other_t)
   then_msecs <- liftIO $ get_clock_time_ms
-  movt <- liftIO $ read_move problem this_h 
+  movt <- liftIO $ read_move problem (this_h, this_t)
   now_msecs <- liftIO $ get_clock_time_ms
   let elapsed = fromIntegral (now_msecs - then_msecs)
   let time' = update_time this_t elapsed
   case time' of
-    TimeRemaining 0 -> do
-      let loser = (showSide . problemToMove) problem
-      case loser of
-        'B' -> do
-          report "231" "W wins on time"
-          return $ Right 1
-        'W' -> do
-          report "232" "B wins on time"
-          return $ Right (-1)
-        _ -> error "internal error: unknown color"
+    TimeRemaining 0 -> time_win
     _ -> do
       case movt of
+        Timeout -> time_win
         Resign -> do
           let loser = (showSide . problemToMove) problem
           case loser of
@@ -130,6 +131,16 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
             False -> do
               return (Left (problem', start_clock time'))
   where
+    time_win = do
+      let loser = (showSide . problemToMove) problem
+      case loser of
+        'B' -> do
+          report "231" "W wins on time"
+          return $ Right 1
+        'W' -> do
+          report "232" "B wins on time"
+          return $ Right (-1)
+        _ -> error "internal error: unknown color"
     execute_move mov = do
       state <- animateProblem problem
       (state', undo) <- move state mov
