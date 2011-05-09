@@ -536,7 +536,7 @@ offerCommand' opt_color opt_times
               let run_game = do
                     let game_desc = show game_id ++ ": " ++
                                       p1_name ++ "(" ++ p1_id ++ ", W) vs " ++
-                                      other_name ++ "(" ++ p2_id ++ ")"
+                                      p2_name ++ "(" ++ p2_id ++ ")"
                     logMsg $ "game " ++ game_desc ++ " begins"
                     let path = log_path </> show game_id
                     game_log <- liftIO $ openFile path WriteMode
