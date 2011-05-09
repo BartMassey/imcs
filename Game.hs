@@ -29,7 +29,7 @@ read_move problem (handle, deadline) =
     microsecs =
       case deadline of
         Untimed -> -1
-        FirstMove _ -> mktime 15
+        FirstMove _ -> mktime 15000
         TimeRemaining t -> mktime (t + 10000)
         where
           mktime :: Int -> Integer
