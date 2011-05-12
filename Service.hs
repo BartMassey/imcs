@@ -320,12 +320,38 @@ data CommandState = CS {
       cs_state :: MVar ServiceState,
       cs_me :: IORef (Maybe String) }
 
-type Command = CommandState -> ELIO ()
-    
+type Command = [String] -> CommandState -> ELIO ()
+
+commandList :: [(String, Command)]    
+commandList = {
+      ("help", ("", helpCommand)),
+      ("quit", ("", quitCommand)),
+      ("me", (" <player> <password>", meCommand)),
+      ("register", (" <player> <password>", registerCommand)),
+      ("password", (" <password>", passwordCommand)),
+      ("list", ("", listCommand)),
+      ("ratings", ("", ratingsCommand)),
+      ("offer", (" [<color>] [<time>[:<opp-time>]]", offerCommand)),
+      ("accept", (" <game-id> [<my-color>]", acceptCommand)),
+      ("clean", ("", cleanCommand)),
+      ("stop", ("", stopCommand)) }
+
+usage :: String -> CommandState -> ELIO ()
+usage cmd cs =
+  case lookup cmd commandList of
+    Nothing -> 
+      error "internal error: usage on non-command"
+    Just (argdesc, _) ->
+      sPutStrLn (cs_h cs) $ 
+        printf "409 %s: usage: %s%s" cmd cmd argdesc
+
+sPut :: CommandState -> String -> ELIO ()
+sPut cs s = 
+
 helpCommand :: Command
-helpCommand (CS {cs_h = h, cs_me = me}) = do
-  maybe_my_name <- liftIO $ readIORef me
-  liftIO $ hPutStr h $ sUnlines $ [
+helpCommand [] cs = do
+  maybe_my_name <- liftIO $ readIORef (cs_me cs)
+  liftIO $ hPutStr (cs_h cs) $ sUnlines $ [
     "210 imcs " ++ version ++ " help",
     " help: this help",
     " quit: quit imcs",
@@ -341,30 +367,32 @@ helpCommand (CS {cs_h = h, cs_me = me}) = do
     (case maybe_my_name of
        Just "admin" -> [" stop: stop the server"]
        _ -> []) ++ ["."]
+helpCommand _ cs = usage "help" cs
 
 quitCommand :: Command
-quitCommand (CS {cs_h = h, cs_client_id = client_id}) = do
+quitCommand [] cs = do
   logMsg $ "client " ++ client_id ++ " quits"
-  sPutStrLn h "200 Goodbye"
-  liftIO $ hClose h
+  sPutStrLn (cs_h cs) "200 Goodbye"
+  liftIO $ hClose (cs_h cs)
   finish
+quitCommand _ cs = usage "quit" cs
 
-meCommand :: String -> String -> Command
-meCommand name password (CS {cs_h = h,  cs_client_id = client_id,
-                             cs_state = state, cs_me = me}) = do
-  ss <- liftIO $ readMVar state
+meCommand :: Command
+meCommand [name, password] cs = do
+  ss <- liftIO $ readMVar (cs_state cs)
   case pw_lookup ss name of
     Nothing ->
-        sPutStrLn h $ "400 no such username: " ++
-                               "please use register command"
+        sPutStrLn (cs_h cs)
+          "400 no such username: please use register command"
     Just (password', _) ->
         if password /= password'
         then
-          sPutStrLn h "401 wrong password"
+          sPutStrLn (cs_h cs) "401 wrong password"
         else do
           logMsg $ "client " ++ client_id ++ " aka " ++ name
           liftIO $ writeIORef me $ Just name
           sPutStrLn h $ "201 hello " ++ name
+meCommand _ cs = usage "me" cs
 
 registerCommand :: String -> String -> Command
 registerCommand name password (CS {cs_h = h, cs_client_id = client_id,
@@ -778,18 +806,9 @@ doCommands (main_thread, reaccept) (h, client_id) state = do
   _ <- runErrorT $ forever $ do
     line <- liftIO $ hGetLine h
     case words line of
-      [] -> return ()
-      ["help"] -> helpCommand params
-      ["quit"] -> quitCommand params
-      ["me", name, password] -> meCommand name password params
-      ["register", name, password] -> registerCommand name password params
-      ["password", password] -> passwordCommand password params
-      ["list"] -> listCommand params
-      ["ratings"] -> ratingsCommand params
-      ("offer" : args) -> offerCommand args params
-      ("accept" : accept_game_id : opt_color) | length opt_color <= 1 ->
-        acceptCommand accept_game_id (listToMaybe opt_color) params
-      ["clean"] -> cleanCommand params
-      ["stop"] -> stopCommand params
+      [] -> 
+        return ()
+      cmd : args ->
+-- HERE
       _ -> sPutStrLn h $ "501 unknown command"
   return ()
