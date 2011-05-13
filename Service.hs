@@ -331,7 +331,7 @@ commandList = {
       ("password", (" <password>", passwordCommand)),
       ("list", ("", listCommand)),
       ("ratings", ("", ratingsCommand)),
-      ("offer", (" [<color>] [<time>[:<opp-time>]]", offerCommand)),
+      ("offer", (" [<color>] [<time> [<opp-time>]]", offerCommand)),
       ("accept", (" <game-id> [<my-color>]", acceptCommand)),
       ("clean", ("", cleanCommand)),
       ("stop", ("", stopCommand)) }
@@ -345,13 +345,16 @@ usage cmd cs =
       sPutStrLn (cs_h cs) $ 
         printf "409 %s: usage: %s%s" cmd cmd argdesc
 
-sPut :: CommandState -> String -> ELIO ()
-sPut cs s = 
+sPutLn :: CommandState -> String -> ELIO ()
+sPutLn cs s = sPutStrLn (cs_h cs) s
+
+hPut :: CommandState -> String -> ELIO ()
+hPut cs s = liftIO $ hPutStr (cs_h cs) s
 
 helpCommand :: Command
 helpCommand [] cs = do
   maybe_my_name <- liftIO $ readIORef (cs_me cs)
-  liftIO $ hPutStr (cs_h cs) $ sUnlines $ [
+  hPut cs $ sUnlines $ [
     "210 imcs " ++ version ++ " help",
     " help: this help",
     " quit: quit imcs",
@@ -372,7 +375,7 @@ helpCommand _ cs = usage "help" cs
 quitCommand :: Command
 quitCommand [] cs = do
   logMsg $ "client " ++ client_id ++ " quits"
-  sPutStrLn (cs_h cs) "200 Goodbye"
+  sPutLn cs "200 Goodbye"
   liftIO $ hClose (cs_h cs)
   finish
 quitCommand _ cs = usage "quit" cs
@@ -382,42 +385,42 @@ meCommand [name, password] cs = do
   ss <- liftIO $ readMVar (cs_state cs)
   case pw_lookup ss name of
     Nothing ->
-        sPutStrLn (cs_h cs)
-          "400 no such username: please use register command"
+        sPutLn cs "400 no such username: please use register command"
     Just (password', _) ->
         if password /= password'
         then
-          sPutStrLn (cs_h cs) "401 wrong password"
+          sPutLn cs "401 wrong password"
         else do
           logMsg $ "client " ++ client_id ++ " aka " ++ name
           liftIO $ writeIORef me $ Just name
-          sPutStrLn h $ "201 hello " ++ name
+          sPutLn cs $ "201 hello " ++ name
 meCommand _ cs = usage "me" cs
 
-registerCommand :: String -> String -> Command
-registerCommand name password (CS {cs_h = h, cs_client_id = client_id,
-                                   cs_state = state, cs_me = me}) = do
-  ss <- liftIO $ takeMVar state
-  case pw_lookup ss name of
+registerCommand :: Command
+registerCommand [name, password] cs = do
+  ss <- liftIO $ takeMVar (cs_state cs)
+  case pw_lookup ss (cs_name cs) of
     Just _ -> do
-      liftIO $ putMVar state ss
-      sPutStrLn h $ "402 username already exists: " ++
-                    "please use password command to change"
+      liftIO $ putMVar (cs_state cs) ss
+      sPutLn cs $ "402 username already exists: " ++
+                  "please use password command to change"
     Nothing -> do
       let ServiceState game_id game_list pwf = ss
-      let pwfe = PWFEntry name password baseRating
+      let pwfe = PWFEntry (cs_name cs) password baseRating
       let pwf' = pwf ++ [pwfe]
       let ss' = ServiceState game_id game_list pwf'
       liftIO $ do
         write_pwf pwf' --- XXX failure will hang server
-        putMVar state ss'
-        writeIORef me $ Just name
-      sPutStrLn h $ "202 hello new user " ++ name
-      logMsg $ "registered client " ++ client_id ++
-               " as user " ++ name
+        putMVar (cs_state cs) ss'
+        writeIORef (cs_me cs) $ Just (cs_name cs)
+      sPutLn cs $ "202 hello new user " ++ cs_name cs
+      logMsg $ "registered client " ++ cs_client_id cs ++
+               " as user " ++ cs_name cs
+registerCommand _ cs = usage "register" cs
 
-passwordCommand :: String -> Command
-passwordCommand password (CS {cs_h = h, cs_client_id = client_id,
+-- HERE
+passwordCommand :: Command
+passwordCommand [password] (CS {cs_h = h, cs_client_id = client_id,
                               cs_state = state, cs_me = me}) = do
   maybe_my_name <- liftIO $ readIORef me
   case maybe_my_name of
