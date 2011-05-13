@@ -322,54 +322,69 @@ data CommandState = CS {
 
 type Command = [String] -> CommandState -> ELIO ()
 
-commandList :: [(String, Command)]    
-commandList = {
-      ("help", ("", helpCommand)),
-      ("quit", ("", quitCommand)),
-      ("me", (" <player> <password>", meCommand)),
-      ("register", (" <player> <password>", registerCommand)),
-      ("password", (" <password>", passwordCommand)),
-      ("list", ("", listCommand)),
-      ("ratings", ("", ratingsCommand)),
-      ("offer", (" [<color>] [<time> [<opp-time>]]", offerCommand)),
-      ("accept", (" <game-id> [<my-color>]", acceptCommand)),
-      ("clean", ("", cleanCommand)),
-      ("stop", ("", stopCommand)) }
+data CommandRecord = CommandRecord {
+  cr_name :: String,
+  cr_argdesc :: String,
+  cr_command :: Command,
+  cr_desc :: String }
 
-usage :: String -> CommandState -> ELIO ()
-usage cmd cs =
-  case lookup cmd commandList of
-    Nothing -> 
-      error "internal error: usage on non-command"
-    Just (argdesc, _) ->
-      sPutStrLn (cs_h cs) $ 
-        printf "409 %s: usage: %s%s" cmd cmd argdesc
+commandList :: [CommandRecord]
+commandList = [
+      CommandRecord "help" "" helpCommand "this help",
+      CommandRecord "quit" "" quitCommand "quit imcs",
+      CommandRecord "me" "<player> <password>" meCommand "log in",
+      CommandRecord "register" "<player> <password>" registerCommand
+        "register a new name and log in",
+      CommandRecord "password" "<password>" passwordCommand "change password",
+      CommandRecord "list" "" listCommand "list available games",
+      CommandRecord "ratings" "" ratingsCommand 
+        "list player ratings (top 10 plus own)",
+      CommandRecord "offer" "[<color>] [<time> [<opp-time>]]" offerCommand
+        "offer a game with given constraints",
+      CommandRecord "accept" "<game-id> [<my-color>]" acceptCommand
+        "accept a game with an opponent",
+      CommandRecord "clean" "" cleanCommand 
+        "cancel all my outstanding offers" ]
+
+adminCommandList :: [CommandRecord]
+adminCommandList = commandList ++ [
+      CommandRecord "stop" "" stopCommand 
+        "stop the server and wait for in-process games" ]
+
+lookup_cmd :: String -> [CommandRecord] -> Maybe CommandRecord
+lookup_cmd cmd crs = find ((cmd ==) . cr_name) crs
 
 sPutLn :: CommandState -> String -> ELIO ()
 sPutLn cs s = sPutStrLn (cs_h cs) s
 
-hPut :: CommandState -> String -> ELIO ()
-hPut cs s = liftIO $ hPutStr (cs_h cs) s
+hPutLn :: CommandState -> String -> ELIO ()
+hPutLn cs s = liftIO $ hPutStrLn (cs_h cs) s
+
+usage_str :: CommandRecord -> String
+usage_str (CommandRecord {cr_name = name, cr_argdesc = argdesc}) =
+  if argdesc == "" then name  else name ++ " " ++ argdesc
+
+usage :: String -> CommandState -> ELIO ()
+usage cmd cs =
+  case lookup_cmd cmd adminCommandList of
+    Nothing -> 
+      error "internal error: usage on non-command"
+    Just cr ->
+      sPutLn cs $ printf "409 %s: usage: %s" cmd (usage_str cr)
 
 helpCommand :: Command
 helpCommand [] cs = do
   maybe_my_name <- liftIO $ readIORef (cs_me cs)
-  hPut cs $ sUnlines $ [
-    "210 imcs " ++ version ++ " help",
-    " help: this help",
-    " quit: quit imcs",
-    " me <name> <password>: log in",
-    " register <name> <password>: register a new name and log in",
-    " password <password>: change password",
-    " list: list available games in format",
-    "        <id> <opponent-name> <opponent-color> <opponent-rating>",
-    " ratings: list player ratings (top 10 plus own)",
-    " offer [<color>] [<time> [<time>]]: offer a game with given constraints",
-    " accept <id> [<color>]: accept a game with an opponent",
-    " clean: cancel all outstanding offers of current player" ] ++
-    (case maybe_my_name of
-       Just "admin" -> [" stop: stop the server"]
-       _ -> []) ++ ["."]
+  hPutLn cs $  "210 imcs " ++ cs_version cs ++ " help"
+  let crs = 
+        case maybe_my_name of
+          Just "admin" -> adminCommandList
+          Nothing -> commandList
+  mapM_ put_cr crs
+  hPutLn cs "."
+  where
+    put_cr cr =
+      hPutLn cs $ printf " %s: %s" (usage_str cr) (cr_description cr)
 helpCommand _ cs = usage "help" cs
 
 quitCommand :: Command
@@ -418,22 +433,20 @@ registerCommand [name, password] cs = do
                " as user " ++ cs_name cs
 registerCommand _ cs = usage "register" cs
 
--- HERE
 passwordCommand :: Command
-passwordCommand [password] (CS {cs_h = h, cs_client_id = client_id,
-                              cs_state = state, cs_me = me}) = do
-  maybe_my_name <- liftIO $ readIORef me
+passwordCommand [password] cs = do
+  maybe_my_name <- liftIO $ readIORef (cs_me cs)
   case maybe_my_name of
     Nothing ->
-      sPutStrLn h "403 please use the me command first"
+      sPutLn cs "403 please use the me command first"
     Just my_name -> do
-      ss <- liftIO $ takeMVar state
+      ss <- liftIO $ takeMVar (cs_state cs)
       case pw_lookup ss my_name of
         Nothing -> do
-          liftIO $ putMVar state ss
-          logMsg $ "client " ++ client_id ++ " name " ++
+          liftIO $ putMVar (cs_state cs) ss
+          logMsg $ "client " ++ cs_client_id cs ++ " name " ++
                    my_name ++ "not in password file"
-          sPutStrLn h "500 you do not exist: go away"
+          sPutLn cs "500 you do not exist: go away"
         Just _ -> do
           let ServiceState game_id game_list pwf = ss
           let newpass e@(PWFEntry n _ rating)
@@ -443,40 +456,44 @@ passwordCommand [password] (CS {cs_h = h, cs_client_id = client_id,
           let ss' = ServiceState game_id game_list pwf'
           liftIO $ do
             write_pwf pwf'  --- XXX failure will hang server
-            putMVar state ss'
-          sPutStrLn h $ "203 password change for user " ++ my_name
-          logMsg $ "changed password for client " ++ client_id ++
+            putMVar (cs_state cs) ss'
+          sPutLn cs $ "203 password change for user " ++ my_name
+          logMsg $ "changed password for client " ++ cs_client_id cs ++
                    " user " ++ my_name
+passwordCommand _ cs = usage "password" cs
 
 show_time :: Int -> String
 show_time t = 
   printf "%d:%02d" (t `div` 60000) ((t `div` 1000) `mod` 60)
 
 listCommand :: Command
-listCommand (CS {cs_h = h, cs_state = state}) = do
-  ss@(ServiceState _ game_list _) <- liftIO $ readMVar state
-  sPutStrLn h $ printf "211 %d available games" (length game_list)
+listCommand [] cs = do
+  ss@(ServiceState _ game_list _) <- liftIO $ readMVar (cs_state cs)
+  sPutLn cs $ printf "211 %d available games" (length game_list)
   let lookup_rating other_name =
           case pw_lookup ss other_name of
             Nothing -> "?"
             Just (_, r) -> show r
   let output_game (GameResv game_id other_name _ color (t1, t2) _) =
-          sPutStrLn h $ " " ++ show game_id ++
-                        " " ++ other_name ++
-                        " " ++ [color] ++
-                        " " ++ show_time t1 ++
-                        " " ++ show_time t2 ++
-                        " " ++ lookup_rating other_name ++
-                        " [offer]"
+          sPutLn cs $ " " ++ show game_id ++
+                      " " ++ other_name ++
+                      " " ++ [color] ++
+                      " " ++ show_time t1 ++
+                      " " ++ show_time t2 ++
+                      " " ++ lookup_rating other_name ++
+                      " [offer]"
       output_game (InProgress game_id name_white name_black _) =
-          sPutStrLn h $ " " ++ show game_id ++
-                        " " ++ name_white ++
-                        " " ++ name_black ++
-                        " (" ++ lookup_rating name_white ++ "/" ++
-                             lookup_rating name_black ++ ") " ++
-                        " [in-progress]"
+          sPutLn cs $ " " ++ show game_id ++
+                      " " ++ name_white ++
+                      " " ++ name_black ++
+                      " (" ++ lookup_rating name_white ++ "/" ++
+                              lookup_rating name_black ++ ") " ++
+                      " [in-progress]"
   mapM_ output_game game_list
-  sPutStrLn h "."
+  sPutLn cs "."
+listCommand _ cs = usage "list" cs
+
+--HERE
 
 ratingsCommand :: Command
 ratingsCommand (CS {cs_h = h, cs_state = state, cs_me = me}) = do
