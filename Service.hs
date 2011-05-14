@@ -708,23 +708,20 @@ offerCommand args cs = do
         timeRE = "^([0-9]+)(:([0-9][0-9]))?$"
 
 acceptCommand' ::  String -> String -> CommandState -> ELIO ()
-acceptCommand' accept_game_id my_color
-               (CS {cs_h = h, cs_client_id = client_id,
-                    cs_state = state, cs_me = me}) = do
-  maybe_my_name <- liftIO $ readIORef me
+acceptCommand' accept_game_id my_color cs = do
+  maybe_my_name <- liftIO $ readIORef (cs_me cs)
   case (parse_int accept_game_id, maybe_my_name) of
     (_, Nothing) ->
-      sPutStrLn h "406 must set name first using me command"
+      sPutLn cs "406 must set name first using me command"
     (Nothing, _) ->
-      sPutStrLn h "407 bad game id"
+      sPutLn cs "407 bad game id"
     (Just ask_id, Just my_name) -> do
-      ss@(ServiceState game_id game_list pwf) <-
-          liftIO $ takeMVar state
+      ss@(ServiceState game_id game_list pwf) <- takeState cs
       game <- game_lookup game_list ask_id
       case game of
         Left err -> do
-          liftIO $ putMVar state ss
-          alsoLogMsg h err
+          putState cs ss
+          alsoLogMsg (cs_h cs) err
         Right (GameResv _ other_name _ other_color 
                         (other_time, my_time) wakeup, 
                game_list') ->  do
@@ -749,20 +746,19 @@ acceptCommand' accept_game_id my_color
                           show colors
           case side of
             Just (code, my_color') -> do
-              liftIO $ putMVar state $
-                ServiceState game_id game_list' pwf
-              logMsg $ "client " ++ client_id ++
-                " accepts " ++ show other_name
-              liftIO $ do
-                hPutStrLn h $ 
-                  code ++ " " ++ my_color' ++ 
-                  " " ++ show_time my_time ++ " " ++
-                  show_time other_time ++ " game starts"
-                writeChan wakeup $ Wakeup my_name client_id h my_color'
+              putState cs $ ServiceState game_id game_list' pwf
+              logMsg $ "client " ++ cs_client_id cs ++
+                       " accepts " ++ show other_name
+              sPutLn cs $ 
+                code ++ " " ++ my_color' ++ 
+                " " ++ show_time my_time ++ " " ++
+                show_time other_time ++ " game starts"
+              liftIO $ writeChan wakeup $ 
+                Wakeup my_name (cs_client_id cs) (cs_h cs) my_color'
               finish
             Nothing -> do
-              liftIO $ putMVar state ss
-              alsoLogMsg h $ "405 bad color " ++ my_color
+              putState cs ss
+              alsoLogMsg (cs_h cs) $ "405 bad color " ++ my_color
         _ -> error "internal error: bad game lookup"
 
 acceptCommand :: Command
