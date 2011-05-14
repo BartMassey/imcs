@@ -44,13 +44,14 @@ alsoLogMsg primary msg = do
     liftIO $ hPutStrLn primary msg
     logMsg msg
 
-withLogDo :: Handle -> LogIO () -> IO ()
+withLogDo :: Handle -> LogIO a -> IO a
 withLogDo h actions = do
   log_chan <- newChan
   tid <- forkIO $ run_log h (LogChan log_chan)
-  runReaderT actions (LogChan log_chan)
+  r <- runReaderT actions (LogChan log_chan)
   hClose h
   killThread tid
+  return r
 
 forkLogIO :: LogIO () -> LogIO ThreadId
 forkLogIO actions = do

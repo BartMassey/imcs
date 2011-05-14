@@ -154,6 +154,8 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
       sPutStrLn this_h $ code ++ " " ++ msg
       sPutStrLn other_h $ code ++ " " ++ msg
       logMsg $ code ++ " " ++ msg
+      liftIO $ hClose this_h
+      liftIO $ hClose other_h
 
 run_game :: Problem -> TCState -> TCState -> LogIO Int
 run_game problem (h, t) other = do

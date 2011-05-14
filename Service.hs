@@ -591,24 +591,24 @@ offerCommand' opt_color opt_times
                     logMsg $ "game " ++ game_desc ++ " begins"
                     let path = log_path </> show game_id
                     game_log <- liftIO $ openFile path WriteMode
-                    liftIO $ withLogDo game_log $ do
-                    time <- liftIO $ getClockTime
-                    let date = calendarTimeToString $ toUTCTime time
-                    logMsg game_desc
-                    logMsg date
-                    score <- doGame p1 p2
+                    score <- liftIO $ withLogDo game_log $ do
+                      time <- liftIO $ getClockTime
+                      let date = calendarTimeToString $ toUTCTime time
+                      logMsg game_desc
+                      logMsg date
+                      s <- doGame p1 p2
+                      return s
+                    logMsg $ "game " ++ game_desc ++ " ends"
                     when (p1_name /= p2_name && 
                           my_time == default_time &&
-                          other_time == default_time) $ liftIO $ do
-                      p1_rating <- lookup_rating p1_name
-                      p2_rating <- lookup_rating p2_name
-                      update_rating p1_name p1_rating
-                        p2_rating score
-                      update_rating p2_name p2_rating
-                        p1_rating (-score)
-                    liftIO $ do
-                      hClose h
-                      hClose other_h
+                          other_time == default_time) $ do
+                      logMsg $ "updating ratings for " ++ p1_name ++ 
+                               ", " ++ p2_name
+                      liftIO $ do
+                        p1_rating <- lookup_rating p1_name
+                        p2_rating <- lookup_rating p2_name
+                        update_rating p1_name p1_rating p2_rating score
+                        update_rating p2_name p2_rating p1_rating (-score)
                     logMsg $ "client " ++ client_id ++ " closes"
                     where
                       lookup_rating name = do
