@@ -372,6 +372,12 @@ usage cmd cs =
     Just cr ->
       sPutLn cs $ printf "409 %s: usage: %s" cmd (usage_str cr)
 
+putState :: CommandState -> ServiceState -> ELIO ()
+putState cs ss = liftIO $ putMVar (cs_state cs) ss
+
+takeState :: CommandState -> ELIO ServiceState
+takeState cs = liftIO $ takeMVar (cs_state cs)
+
 helpCommand :: Command
 helpCommand [] cs = do
   maybe_my_name <- liftIO $ readIORef (cs_me cs)
@@ -414,10 +420,10 @@ meCommand _ cs = usage "me" cs
 
 registerCommand :: Command
 registerCommand [name, password] cs = do
-  ss <- liftIO $ takeMVar (cs_state cs)
+  ss <- takeState cs
   case pw_lookup ss name of
     Just _ -> do
-      liftIO $ putMVar (cs_state cs) ss
+      putState cs ss
       sPutLn cs $ "402 username already exists: " ++
                   "please use password command to change"
     Nothing -> do
@@ -425,10 +431,9 @@ registerCommand [name, password] cs = do
       let pwfe = PWFEntry name password baseRating
       let pwf' = pwf ++ [pwfe]
       let ss' = ServiceState game_id game_list pwf'
-      liftIO $ do
-        write_pwf pwf' --- XXX failure will hang server
-        putMVar (cs_state cs) ss'
-        writeIORef (cs_me cs) $ Just name
+      liftIO $ write_pwf pwf' --- XXX failure will hang server
+      putState cs ss'
+      liftIO $ writeIORef (cs_me cs) $ Just name
       sPutLn cs $ "202 hello new user " ++ name
       logMsg $ "registered client " ++ cs_client_id cs ++
                " as user " ++ name
@@ -441,10 +446,10 @@ passwordCommand [password] cs = do
     Nothing ->
       sPutLn cs "403 please use the me command first"
     Just my_name -> do
-      ss <- liftIO $ takeMVar (cs_state cs)
+      ss <- takeState cs
       case pw_lookup ss my_name of
         Nothing -> do
-          liftIO $ putMVar (cs_state cs) ss
+          putState cs ss
           logMsg $ "client " ++ cs_client_id cs ++ " name " ++
                    my_name ++ "not in password file"
           sPutLn cs "500 you do not exist: go away"
@@ -455,9 +460,8 @@ passwordCommand [password] cs = do
                | otherwise = e
           let pwf' = map newpass pwf
           let ss' = ServiceState game_id game_list pwf'
-          liftIO $ do
-            write_pwf pwf'  --- XXX failure will hang server
-            putMVar (cs_state cs) ss'
+          liftIO $ write_pwf pwf'  --- XXX failure will hang server
+          putState cs ss'
           sPutLn cs $ "203 password change for user " ++ my_name
           logMsg $ "changed password for client " ++ cs_client_id cs ++
                    " user " ++ my_name
@@ -556,7 +560,6 @@ offerCommand' opt_color opt_times
                 ServiceState (game_id + 1) (game_list ++ [new_game]) pwf
           liftIO $ do
             write_game_id (game_id + 1)   --- XXX failure hangs server
-
             putMVar state service_state'
             hPutStrLn h $ "103 " ++
                           show game_id ++
@@ -783,10 +786,10 @@ cleanCommand [] cs = do
   case maybe_my_name of
     Nothing -> sPutLn cs "406 must set name first using me command"
     Just my_name -> do
-      ServiceState game_id game_list pwf <- liftIO $ takeMVar (cs_state cs)
+      ServiceState game_id game_list pwf <- takeState cs
       let (my_list, other_list) = partition my_game game_list
       let ss' = ServiceState game_id other_list pwf
-      liftIO $ putMVar (cs_state cs) ss'
+      putState cs ss'
       liftIO $ mapM_ close_game my_list
       sPutLn cs $ "204 " ++ show (length my_list) ++
                   " games cleaned"
@@ -805,13 +808,12 @@ stopCommand [] cs = do
     Just "admin" -> do
       logMsg $ "stopping server for " ++ cs_client_id cs
       sPutLn cs "104 stopping server"
-      liftIO $ do
-        ServiceState game_id game_list pwf <- takeMVar (cs_state cs)
-        _ <- takeMVar (cs_reaccept cs)
-        putMVar (cs_reaccept cs) False
-        let ss' = ServiceState game_id [] pwf
-        putMVar (cs_state cs) ss'
-        mapM_ close_game game_list
+      ServiceState game_id game_list pwf <- takeState cs
+      _ <- liftIO $ takeMVar (cs_reaccept cs)
+      liftIO $ putMVar (cs_reaccept cs) False
+      let ss' = ServiceState game_id [] pwf
+      putState cs ss'
+      liftIO $ mapM_ close_game game_list
       sPutLn cs "205 server stopped"
       liftIO $ hClose (cs_h cs)
       liftIO $ throwTo (cs_main_thread cs) ExitSuccess
