@@ -375,21 +375,22 @@ usage cmd cs =
 helpCommand :: Command
 helpCommand [] cs = do
   maybe_my_name <- liftIO $ readIORef (cs_me cs)
-  hPutLn cs $  "210 imcs " ++ cs_version cs ++ " help"
+  hPutLn cs $  "210 imcs " ++ version ++ " help"
   let crs = 
         case maybe_my_name of
           Just "admin" -> adminCommandList
+          Just _ -> commandList
           Nothing -> commandList
   mapM_ put_cr crs
   hPutLn cs "."
   where
     put_cr cr =
-      hPutLn cs $ printf " %s: %s" (usage_str cr) (cr_description cr)
+      hPutLn cs $ printf " %s: %s" (usage_str cr) (cr_desc cr)
 helpCommand _ cs = usage "help" cs
 
 quitCommand :: Command
 quitCommand [] cs = do
-  logMsg $ "client " ++ client_id ++ " quits"
+  logMsg $ "client " ++ cs_client_id cs ++ " quits"
   sPutLn cs "200 Goodbye"
   liftIO $ hClose (cs_h cs)
   finish
@@ -406,31 +407,31 @@ meCommand [name, password] cs = do
         then
           sPutLn cs "401 wrong password"
         else do
-          logMsg $ "client " ++ client_id ++ " aka " ++ name
-          liftIO $ writeIORef me $ Just name
+          logMsg $ "client " ++ cs_client_id cs ++ " aka " ++ name
+          liftIO $ writeIORef (cs_me cs) $ Just name
           sPutLn cs $ "201 hello " ++ name
 meCommand _ cs = usage "me" cs
 
 registerCommand :: Command
 registerCommand [name, password] cs = do
   ss <- liftIO $ takeMVar (cs_state cs)
-  case pw_lookup ss (cs_name cs) of
+  case pw_lookup ss name of
     Just _ -> do
       liftIO $ putMVar (cs_state cs) ss
       sPutLn cs $ "402 username already exists: " ++
                   "please use password command to change"
     Nothing -> do
       let ServiceState game_id game_list pwf = ss
-      let pwfe = PWFEntry (cs_name cs) password baseRating
+      let pwfe = PWFEntry name password baseRating
       let pwf' = pwf ++ [pwfe]
       let ss' = ServiceState game_id game_list pwf'
       liftIO $ do
         write_pwf pwf' --- XXX failure will hang server
         putMVar (cs_state cs) ss'
-        writeIORef (cs_me cs) $ Just (cs_name cs)
-      sPutLn cs $ "202 hello new user " ++ cs_name cs
+        writeIORef (cs_me cs) $ Just name
+      sPutLn cs $ "202 hello new user " ++ name
       logMsg $ "registered client " ++ cs_client_id cs ++
-               " as user " ++ cs_name cs
+               " as user " ++ name
 registerCommand _ cs = usage "register" cs
 
 passwordCommand :: Command
@@ -495,7 +496,7 @@ listCommand _ cs = usage "list" cs
 
 ratingsCommand :: Command
 ratingsCommand [] cs = do
-  ServiceState _ _ pwf <- liftIO $ readMVar state
+  ServiceState _ _ pwf <- liftIO $ readMVar (cs_state cs)
   maybe_my_name <- liftIO $ readIORef (cs_me cs)
   let top10 = 
         take 10 $ sortBy (comparing (negate . pwf_entry_rating)) pwf
@@ -709,7 +710,7 @@ offerCommand args cs = do
       where
         timeRE = "^([0-9]+)(:([0-9][0-9]))?$"
 
-acceptCommand' ::  String -> Maybe String -> CommandState -> ELIO ()
+acceptCommand' ::  String -> String -> CommandState -> ELIO ()
 acceptCommand' accept_game_id my_color
                (CS {cs_h = h, cs_client_id = client_id,
                     cs_state = state, cs_me = me}) = do
@@ -768,10 +769,10 @@ acceptCommand' accept_game_id my_color
         _ -> error "internal error: bad game lookup"
 
 acceptCommand :: Command
-acceptCommand [id] cs =
-  acceptCommand' id "?" cs
-acceptCommand [id, color] cs
-  | isJust ccolor = acceptCommand' id (fromJust ccolor) cs
+acceptCommand [game_id] cs =
+  acceptCommand' game_id "?" cs
+acceptCommand [game_id, color] cs
+  | isJust ccolor = acceptCommand' game_id (fromJust ccolor) cs
     where
       ccolor = check_color (Just color)
 acceptCommand _ cs = usage "accept" cs  
@@ -785,7 +786,7 @@ cleanCommand [] cs = do
       ServiceState game_id game_list pwf <- liftIO $ takeMVar (cs_state cs)
       let (my_list, other_list) = partition my_game game_list
       let ss' = ServiceState game_id other_list pwf
-      liftIO $ putMVar state ss'
+      liftIO $ putMVar (cs_state cs) ss'
       liftIO $ mapM_ close_game my_list
       sPutLn cs $ "204 " ++ show (length my_list) ++
                   " games cleaned"
