@@ -378,8 +378,14 @@ putState cs ss = liftIO $ putMVar (cs_state cs) ss
 takeState :: CommandState -> ELIO ServiceState
 takeState cs = liftIO $ takeMVar (cs_state cs)
 
+readState :: CommandState -> ELIO ServiceState
+readState cs = liftIO $ readMVar (cs_state cs)
+
 readMe :: CommandState -> ELIO (Maybe String)
 readMe cs = liftIO $ readIORef $ cs_me cs
+
+sClose :: CommandState -> ELIO ()
+sClose cs = liftIO $ hClose $ cs_h cs
 
 helpCommand :: Command
 helpCommand [] cs = do
@@ -401,13 +407,13 @@ quitCommand :: Command
 quitCommand [] cs = do
   logMsg $ "client " ++ cs_client_id cs ++ " quits"
   sPutLn cs "200 Goodbye"
-  liftIO $ hClose (cs_h cs)
+  sClose cs
   finish
 quitCommand _ cs = usage "quit" cs
 
 meCommand :: Command
 meCommand [name, password] cs = do
-  ss <- liftIO $ readMVar (cs_state cs)
+  ss <- readState cs
   case pw_lookup ss name of
     Nothing ->
         sPutLn cs "400 no such username: please use register command"
@@ -476,7 +482,7 @@ show_time t =
 
 listCommand :: Command
 listCommand [] cs = do
-  ss@(ServiceState _ game_list _) <- liftIO $ readMVar (cs_state cs)
+  ss@(ServiceState _ game_list _) <- readState cs
   sPutLn cs $ printf "211 %d available games" (length game_list)
   let lookup_rating other_name =
           case pw_lookup ss other_name of
@@ -503,7 +509,7 @@ listCommand _ cs = usage "list" cs
 
 ratingsCommand :: Command
 ratingsCommand [] cs = do
-  ServiceState _ _ pwf <- liftIO $ readMVar (cs_state cs)
+  ServiceState _ _ pwf <- readState cs
   maybe_my_name <- readMe cs
   let top10 = 
         take 10 $ sortBy (comparing (negate . pwf_entry_rating)) pwf
