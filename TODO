@@ -1,4 +1,8 @@
+* fix "illegal operation" logging bug
+* add tournament pairing mode
 * add observer mode
 * add webpage generation support
 * better handling of unexpected disconnects
 * better protocol documentation
+* better internal documentation
+
