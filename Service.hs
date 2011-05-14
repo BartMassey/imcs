@@ -378,9 +378,12 @@ putState cs ss = liftIO $ putMVar (cs_state cs) ss
 takeState :: CommandState -> ELIO ServiceState
 takeState cs = liftIO $ takeMVar (cs_state cs)
 
+readMe :: CommandState -> ELIO (Maybe String)
+readMe cs = liftIO $ readIORef $ cs_me cs
+
 helpCommand :: Command
 helpCommand [] cs = do
-  maybe_my_name <- liftIO $ readIORef (cs_me cs)
+  maybe_my_name <- readMe cs
   hPutLn cs $  "210 imcs " ++ version ++ " help"
   let crs = 
         case maybe_my_name of
@@ -441,7 +444,7 @@ registerCommand _ cs = usage "register" cs
 
 passwordCommand :: Command
 passwordCommand [password] cs = do
-  maybe_my_name <- liftIO $ readIORef (cs_me cs)
+  maybe_my_name <- readMe cs
   case maybe_my_name of
     Nothing ->
       sPutLn cs "403 please use the me command first"
@@ -501,7 +504,7 @@ listCommand _ cs = usage "list" cs
 ratingsCommand :: Command
 ratingsCommand [] cs = do
   ServiceState _ _ pwf <- liftIO $ readMVar (cs_state cs)
-  maybe_my_name <- liftIO $ readIORef (cs_me cs)
+  maybe_my_name <- readMe cs
   let top10 = 
         take 10 $ sortBy (comparing (negate . pwf_entry_rating)) pwf
   let rating_list =
@@ -542,7 +545,7 @@ offerCommand' opt_color opt_times cs = do
     Nothing -> 
       sPutLn cs $ "405 bad color " ++ fromJust opt_color
     Just my_color -> do
-      maybe_my_name <- liftIO $ readIORef (cs_me cs)
+      maybe_my_name <- readMe cs
       case maybe_my_name of
         Nothing ->
           sPutLn cs "404 must set name first using me command"
@@ -709,7 +712,7 @@ offerCommand args cs = do
 
 acceptCommand' ::  String -> String -> CommandState -> ELIO ()
 acceptCommand' accept_game_id my_color cs = do
-  maybe_my_name <- liftIO $ readIORef (cs_me cs)
+  maybe_my_name <- readMe cs
   case (parse_int accept_game_id, maybe_my_name) of
     (_, Nothing) ->
       sPutLn cs "406 must set name first using me command"
@@ -772,7 +775,7 @@ acceptCommand _ cs = usage "accept" cs
 
 cleanCommand :: Command
 cleanCommand [] cs = do
-  maybe_my_name <- liftIO $ readIORef (cs_me cs)
+  maybe_my_name <- readMe cs
   case maybe_my_name of
     Nothing -> sPutLn cs "406 must set name first using me command"
     Just my_name -> do
@@ -792,7 +795,7 @@ cleanCommand _ cs = usage "clean" cs
 
 stopCommand :: Command
 stopCommand [] cs = do
-  maybe_my_name <- liftIO $ readIORef (cs_me cs)
+  maybe_my_name <- readMe cs
   case maybe_my_name of
     Nothing -> sPutLn cs "406 must set name first using me command"
     Just "admin" -> do
