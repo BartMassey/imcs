@@ -394,8 +394,7 @@ helpCommand [] cs = do
   let crs = 
         case maybe_my_name of
           Just "admin" -> adminCommandList
-          Just _ -> commandList
-          Nothing -> commandList
+          _ -> commandList
   mapM_ put_cr crs
   hPutLn cs "."
   where
