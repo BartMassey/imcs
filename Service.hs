@@ -606,9 +606,7 @@ offerCommand' opt_color opt_times cs = do
                     s <- doGame p1 p2
                     return s
                   logMsg $ "game " ++ game_desc ++ " ends"
-                  when (p1_name /= p2_name && 
-                        my_time == default_time &&
-                        other_time == default_time) $ do
+                  when (p1_name /= p2_name) $ do
                     logMsg $ "updating ratings for " ++ p1_name ++ 
                              ", " ++ p2_name
                     p1_rating <- lookup_rating p1_name
