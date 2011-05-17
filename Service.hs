@@ -384,8 +384,8 @@ readState cs = liftIO $ readMVar (cs_state cs)
 readMe :: CommandState -> ELIO (Maybe String)
 readMe cs = liftIO $ readIORef $ cs_me cs
 
-sClose :: CommandState -> ELIO ()
-sClose cs = liftIO $ hClose $ cs_h cs
+shClose :: CommandState -> ELIO ()
+shClose cs = liftIO $ hClose $ cs_h cs
 
 helpCommand :: Command
 helpCommand [] cs = do
@@ -406,7 +406,7 @@ quitCommand :: Command
 quitCommand [] cs = do
   logMsg $ "client " ++ cs_client_id cs ++ " quits"
   sPutLn cs "200 Goodbye"
-  sClose cs
+  shClose cs
   finish
 quitCommand _ cs = usage "quit" cs
 
