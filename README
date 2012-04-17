@@ -1,18 +1,13 @@
-Copyright © 2007-2009 Bart Massey
-ALL RIGHTS RESERVED
+Internet MiniChess Server
+
+Copyright © 2007-2012 Bart Massey
 Please see the file COPYING in this distribution for license
 information.
 
-Internet MiniChess Server
-
 This package is a communications server and referee for
-games of MiniChess (http://wiki.cs.pdx.edu/cs542/mini-chess.html)
-played online.  It currently conforms to the MiniChess 2009
-rules.
-
-The program is not currently XBoard compatible.  See the URL
-above for a patched version of XBoard that understands the
-MiniChess rules.
+games of MinitChess played online. See
+http://wiki.cs.pdx.edu/cs542/mini-chess.html for more
+information on MinitChess.
 
 Building this package requires a Haskell compiler; it is
 known to work with GHC 6.10.1.  It also requires my
