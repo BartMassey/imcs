@@ -23,7 +23,7 @@ import Data.List
 import Data.Maybe
 import Data.Ord
 import Network
-import Random
+import System.Random
 import System.Exit
 import System.FilePath
 import System.IO
@@ -427,24 +427,29 @@ meCommand [name, password] cs = do
 meCommand _ cs = usage "me" cs
 
 registerCommand :: Command
-registerCommand [name, password] cs = do
-  ss <- takeState cs
-  case pw_lookup ss name of
-    Just _ -> do
-      putState cs ss
-      sPutLn cs $ "402 username already exists: " ++
-                  "please use password command to change"
-    Nothing -> do
-      let ServiceState game_id game_list pwf = ss
-      let pwfe = PWFEntry name password baseRating
-      let pwf' = pwf ++ [pwfe]
-      let ss' = ServiceState game_id game_list pwf'
-      liftIO $ write_pwf pwf' --- XXX failure will hang server
-      putState cs ss'
-      liftIO $ writeIORef (cs_me cs) $ Just name
-      sPutLn cs $ "202 hello new user " ++ name
-      logMsg $ "registered client " ++ cs_client_id cs ++
-               " as user " ++ name
+registerCommand [name, password] cs 
+  | any (\c -> not (isAlphaNum c) && not (c `elem` "._-")) name =
+      sPutLn cs "410 illegal characters in username"
+  | any (\c -> not (isPrint c) || isSpace c) password = 
+      sPutLn cs "411 illegal characters in password"
+  | otherwise = do
+      ss <- takeState cs
+      case pw_lookup ss name of
+        Just _ -> do
+          putState cs ss
+          sPutLn cs $ "402 username already exists: " ++
+                      "please use password command to change"
+        Nothing -> do
+          let ServiceState game_id game_list pwf = ss
+          let pwfe = PWFEntry name password baseRating
+          let pwf' = pwf ++ [pwfe]
+          let ss' = ServiceState game_id game_list pwf'
+          liftIO $ write_pwf pwf' --- XXX failure will hang server
+          putState cs ss'
+          liftIO $ writeIORef (cs_me cs) $ Just name
+          sPutLn cs $ "202 hello new user " ++ name
+          logMsg $ "registered client " ++ cs_client_id cs ++
+                   " as user " ++ name
 registerCommand _ cs = usage "register" cs
 
 passwordCommand :: Command

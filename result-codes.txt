@@ -43,6 +43,8 @@ by protocol version.
 408 no such game
 409 bad arguments [pre 2.5]
 409 <cmd>: usage: <cmd> <args> [2.5]
+410 illegal characters in username [2.5]
+411 illegal characters in password [2.5]
 420 fatal IO error [pre 2.5]
 421 offer countermanded
 499 internal error: <reason>

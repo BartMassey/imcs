@@ -10,12 +10,13 @@ http://wiki.cs.pdx.edu/cs542/mini-chess.html for more
 information on MinitChess.
 
 Building this package requires a Haskell compiler; it is
-known to work with GHC 6.10.1 or 7.0.4.  It requires the
+known to work with GHC 6.10.1 or 7.0.4 or 7.4.1.  It requires the
 following extra packages available from Hackage:
   * parseargs: provides System.Console.ParseArgs, my argument parser
   * concurrent-extra: provides Control.Concurrent.Timeout
   * regex-tdfa: provides Text.Regex.TDFA
   * network: provides Network
+  * random: provides System.Random (may be provided in newer libs)
 
 The program provides a service to which a client can connect
 and either offer a game or accept a game from an existing
