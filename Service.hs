@@ -174,7 +174,7 @@ touchService new_ok port opt_admin_pw = do
                 let expect code failure = do
                       when debugExpectSend $ putStrLn $ "expecting " ++ code
                       let process_line = do
-                            line <- hGetLine h
+                            line <- sGetLine h
                             when debugExpectSend $ putStrLn $ "got " ++ line
                             case words line of
                               (code' : _) | code == code' -> return ()
@@ -831,7 +831,7 @@ doCommands (main_thread, reaccept) (h, client_id) state = do
   me <- liftIO $ newIORef Nothing
   let params = CS main_thread reaccept h client_id state me
   _ <- runErrorT $ forever $ do
-    line <- liftIO $ hGetLine h
+    line <- liftIO $ sGetLine h
     case words line of
       [] -> 
         return ()

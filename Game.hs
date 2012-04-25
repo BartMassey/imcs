@@ -24,7 +24,7 @@ data MoveResult = Timeout | Resign | InvalidMove | IllegalMove | GoodMove Move
 read_move :: Problem -> (Handle, TimerState) -> IO MoveResult
 read_move problem (handle, deadline) =
   (move_result . fmap words)  `fmap`
-    timeout microsecs (hGetLine handle)
+    timeout microsecs (sGetLine handle)
   where
     microsecs =
       case deadline of
