@@ -189,7 +189,7 @@ touchService new_ok port opt_admin_pw = do
                       catch process_line io_fail
                 let send s = do
                       when debugExpectSend $ putStrLn $ "sending " ++ s
-                      hPutStrLn h s
+                      sPutStrNL h s
                 expect "100" "unexpected server hello"
                 send $ "me admin " ++ admin_pw
                 expect "201" "could not become admin"
@@ -357,9 +357,6 @@ cmd_lookup cmd crs = find ((cmd ==) . cr_name) crs
 sPutLn :: CommandState -> String -> ELIO ()
 sPutLn cs s = sPutStrLn (cs_h cs) s
 
-hPutLn :: CommandState -> String -> ELIO ()
-hPutLn cs s = liftIO $ hPutStrLn (cs_h cs) s
-
 usage_str :: CommandRecord -> String
 usage_str (CommandRecord {cr_name = name, cr_argdesc = argdesc}) =
   if argdesc == "" then name  else name ++ " " ++ argdesc
@@ -390,16 +387,16 @@ shClose cs = liftIO $ hClose $ cs_h cs
 helpCommand :: Command
 helpCommand [] cs = do
   maybe_my_name <- readMe cs
-  hPutLn cs $  "210 imcs " ++ version ++ " help"
+  sPutLn cs $  "210 imcs " ++ version ++ " help"
   let crs = 
         case maybe_my_name of
           Just "admin" -> adminCommandList
           _ -> commandList
   mapM_ put_cr crs
-  hPutLn cs "."
+  sPutLn cs "."
   where
     put_cr cr =
-      hPutLn cs $ printf " %s: %s" (usage_str cr) (cr_desc cr)
+      sPutLn cs $ printf " %s: %s" (usage_str cr) (cr_desc cr)
 helpCommand _ cs = usage "help" cs
 
 quitCommand :: Command
@@ -646,8 +643,8 @@ offerCommand' opt_color opt_times cs = do
                     close_it :: Handle -> IO ()
                     close_it h' = 
                       catch (do
-                                hPutStrLn h'
-                                  "X fatal IO error: exiting\r\n"
+                                sPutStrNL h'
+                                  "X fatal IO error: exiting"
                                 hClose h')
                             (\_ -> return ())
               lift $ catchLogIO run_game clean_up

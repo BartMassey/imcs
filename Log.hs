@@ -6,7 +6,7 @@
 --- distribution of this software for license terms.
 
 module Log (LogIO, MonadLogIO, liftIO, withLogDo, logMsg, alsoLogMsg,
-           forkLogIO, catchLogIO, whileLogIO)
+           forkLogIO, catchLogIO, whileLogIO, sPutStrLn)
 where
 
 import Prelude hiding (catch)
@@ -16,6 +16,8 @@ import Control.Monad.Reader
 import Data.IORef
 import System.IO
 import System.IO.Error
+
+import SNewLine
 
 newtype LogMsg = LogMsg String
 
@@ -41,7 +43,7 @@ logMsg msg = do
 
 alsoLogMsg :: MonadLogIO m => Handle -> String -> m ()
 alsoLogMsg primary msg = do
-    liftIO $ hPutStrLn primary msg
+    sPutStrLn primary msg
     logMsg msg
 
 withLogDo :: Handle -> LogIO a -> IO a
@@ -70,3 +72,6 @@ whileLogIO b a = do
   case cond of
     False -> return ()
     True -> a >> whileLogIO b a
+
+sPutStrLn :: MonadLogIO m => Handle -> String -> m ()
+sPutStrLn h s = liftIO $ sPutStrNL h s

@@ -7,12 +7,10 @@
 --- Code to deal with emitting telnet-appropriate line
 --- endings
 
-module SNewLine (sNewLine, sUnlines, sPutStrLn)
+module SNewLine (sNewLine, sUnlines, sPutStrNL)
 where
 
 import System.IO
-
-import Log
 
 sNewLine :: String
 sNewLine = "\r\n"
@@ -20,8 +18,7 @@ sNewLine = "\r\n"
 sUnlines :: [String] -> String
 sUnlines = concatMap (++ sNewLine)
 
-sPutStrLn :: MonadLogIO m => Handle -> String -> m ()
-sPutStrLn h s = liftIO $ do
+sPutStrNL :: Handle -> String -> IO ()
+sPutStrNL h s = do
   hPutStr h $ s ++ sNewLine
   hFlush h
-

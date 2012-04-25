@@ -81,7 +81,7 @@ run_service port = do
         return ()
       False -> do
         let (h, cid) = client
-        liftIO $ hPutStrLn h $ "503 server shutdown, come back later"
+        sPutStrLn h $ "503 server shutdown, come back later"
         liftIO $ hClose h
         logMsg $ "refused client " ++ cid
 
