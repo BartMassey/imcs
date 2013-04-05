@@ -6,7 +6,7 @@ information.
 
 This package is a communications server and referee for
 games of MinitChess played online. See
-http://wiki.cs.pdx.edu/cs542/mini-chess.html for more
+http://wiki.cs.pdx.edu/minichess/ for more
 information on MinitChess.
 
 Building this package requires a Haskell compiler; it is
