@@ -11,10 +11,11 @@ module Service (
   initServiceState,
   doCommands) where
 
-import Prelude hiding (catch)
+import Prelude
 
 import Control.Concurrent
 import Control.Exception (evaluate, throw)
+import Control.Exception.Base (catch, IOException)
 import Control.Monad
 import Control.Monad.Error
 import Data.Char
@@ -110,7 +111,7 @@ createVersion = do
 
 initService :: Int -> IO ()
 initService port = do
-  catch try_to_connect (\_ -> return ())
+  catch try_to_connect ((\_ -> return ()) :: IOException -> IO ())
   createVersion
   where
     try_to_connect = do
@@ -185,7 +186,7 @@ touchService new_ok port opt_admin_pw = do
                                 throw e
                       let io_fail e = do
                             putStrLn $ "IO Error: exiting"
-                            throw e
+                            throw (e :: IOException)
                       catch process_line io_fail
                 let send s = do
                       when debugExpectSend $ putStrLn $ "sending " ++ s
@@ -200,7 +201,7 @@ touchService new_ok port opt_admin_pw = do
                 return ()
           let fail_to_connect e = do
                 putStrLn $ "could not find server, continuing upgrade:" ++
-                           show port ++ " : " ++ show e
+                           show port ++ " : " ++ show (e :: IOException)
           catch try_to_connect fail_to_connect
 
 read_versionf :: IO String
@@ -210,6 +211,7 @@ read_versionf = catch read_version_file give_up where
       l <- hGetLine vh
       hClose vh
       return $ unwords $ words l
+    give_up :: IOException -> IO String
     give_up _ = do
       return ""
 
@@ -262,6 +264,7 @@ read_game_id = catch read_game_file give_up where
       l <- hGetLine idh
       hClose idh
       return $ read l
+    give_up :: IOException -> IO Int
     give_up _ = do
       return 1
 
@@ -646,7 +649,7 @@ offerCommand' opt_color opt_times cs = do
                                 sPutStrNL h'
                                   "X fatal IO error: exiting"
                                 hClose h')
-                            (\_ -> return ())
+                            ((\_ -> return ()) :: IOException -> IO ())
               lift $ catchLogIO run_game clean_up
               ServiceState game_id''' game_list''' pwf''' <- takeState cs
               let exclude_me (InProgress game_id' _ _ _)

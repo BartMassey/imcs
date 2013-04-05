@@ -9,13 +9,13 @@ module Log (LogIO, MonadLogIO, liftIO, withLogDo, logMsg, alsoLogMsg,
            forkLogIO, catchLogIO, whileLogIO, sPutStrLn)
 where
 
-import Prelude hiding (catch)
+import Prelude
 import Control.Concurrent
+import Control.Exception.Base
 import Control.Monad.Error
 import Control.Monad.Reader
 import Data.IORef
 import System.IO
-import System.IO.Error
 
 import SNewLine
 
