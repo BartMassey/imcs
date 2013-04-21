@@ -9,7 +9,7 @@ module Log (LogIO, MonadLogIO, liftIO, withLogDo, logMsg, alsoLogMsg,
            forkLogIO, catchLogIO, whileLogIO, sPutStrLn)
 where
 
-import Prelude
+import Prelude hiding (catch)
 import Control.Concurrent
 import Control.Exception.Base
 import Control.Monad.Error

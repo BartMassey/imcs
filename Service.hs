@@ -11,8 +11,7 @@ module Service (
   initServiceState,
   doCommands) where
 
-import Prelude
-
+import Prelude hiding (catch)
 import Control.Concurrent
 import Control.Exception (evaluate, throw)
 import Control.Exception.Base (catch, IOException)
@@ -28,7 +27,7 @@ import System.Random
 import System.Exit
 import System.FilePath
 import System.IO
-import System.IO.Error
+import System.IO.Error hiding (catch)
 import System.Posix.Files
 import System.Posix.Directory
 import System.Time
