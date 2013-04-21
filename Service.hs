@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 --- Copyright © 2009 Bart Massey
 --- ALL RIGHTS RESERVED
 --- [This program is licensed under the "MIT License"]
@@ -11,7 +12,9 @@ module Service (
   initServiceState,
   doCommands) where
 
+#if __GLASGOW_HASKELL__ < 706
 import Prelude hiding (catch)
+#endif
 import Control.Concurrent
 import Control.Exception (evaluate, throw)
 import Control.Exception.Base (catch, IOException)
@@ -27,7 +30,11 @@ import System.Random
 import System.Exit
 import System.FilePath
 import System.IO
+#if __GLASGOW_HASKELL__ < 706
 import System.IO.Error hiding (catch)
+#else
+import System.IO.Error
+#endif
 import System.Posix.Files
 import System.Posix.Directory
 import System.Time

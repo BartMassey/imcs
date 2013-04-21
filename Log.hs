@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances, TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, TypeSynonymInstances, CPP #-}
 --- Copyright © 2009 Bart Massey
 --- ALL RIGHTS RESERVED
 --- [This program is licensed under the "MIT License"]
@@ -9,7 +9,9 @@ module Log (LogIO, MonadLogIO, liftIO, withLogDo, logMsg, alsoLogMsg,
            forkLogIO, catchLogIO, whileLogIO, sPutStrLn)
 where
 
+#if __GLASGOW_HASKELL__ < 706
 import Prelude hiding (catch)
+#endif
 import Control.Concurrent
 import Control.Exception.Base
 import Control.Monad.Error
