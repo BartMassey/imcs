@@ -1,6 +1,6 @@
 // Copyright (c) 2012 Bart Massey <bart@cs.pdx.edu>
 // Licensed under the "MIT License"
-// Please see the file COPYING in this distribution
+// Please see the file COPYING at http://github.com/BartMassey/imcs
 
 import java.io.*;
 import java.net.*;
@@ -145,7 +145,7 @@ public class Client {
      * until move is received.
      * @return  opponent move string
      */
-    String getMove()
+    public String getMove()
       throws IOException {
 	String line;
 	char ch;
@@ -169,7 +169,7 @@ public class Client {
      * Send a move to the server.
      * @param moveStr  move string to send
      */
-    void sendMove(String moveStr) 
+    public void sendMove(String moveStr) 
       throws IOException {
 	String line;
 	do {
