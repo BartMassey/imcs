@@ -19,7 +19,7 @@ import State
 
 type CState = (Handle, Maybe Int)
 
-data MoveResult = Timeout | Resign | InvalidMove | IllegalMove | GoodMove Move
+data MoveResult = Timeout | Resign | InvalidMove String | IllegalMove String | GoodMove Move
 
 read_move :: Problem -> (Handle, TimerState) -> IO MoveResult
 read_move problem (handle, deadline) =
@@ -38,13 +38,13 @@ read_move problem (handle, deadline) =
     move_result (Just ["resign"]) = Resign
     move_result (Just ["!", move_word]) = process_move move_word
     move_result (Just [move_word]) = process_move move_word
-    move_result (Just _) = InvalidMove
+    move_result (Just ss) = InvalidMove $ unwords ss
     process_move move_word = 
       case readMove move_word of
-          Nothing -> InvalidMove
+          Nothing -> InvalidMove move_word
           Just mov -> case runST check_move of
                         True -> GoodMove mov
-                        False -> IllegalMove
+                        False -> IllegalMove move_word
                       where
                         check_move = do
                           state <- animateProblem problem
@@ -106,11 +106,11 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
               report "232" "B wins on resignation"
               return $ Right (-1)
             _ -> error "internal error: unknown color"
-        IllegalMove -> do
-          alsoLogMsg this_h ("- illegal move")
+        IllegalMove s -> do
+          alsoLogMsg this_h ("- illegal move " ++ s)
           return (Left (problem, time'))
-        InvalidMove -> do
-          alsoLogMsg this_h ("- invalid move")
+        InvalidMove s -> do
+          alsoLogMsg this_h ("- invalid move" ++ s)
           return (Left (problem, time'))
         GoodMove mov -> do
           let (captured, stop, problem') = runST (execute_move mov)
