@@ -353,7 +353,9 @@ commandList = [
       CommandRecord "accept" "<game-id> [<my-color>]" acceptCommand
         "accept a game with an opponent",
       CommandRecord "clean" "" cleanCommand 
-        "cancel all my outstanding offers" ]
+        "cancel all my outstanding offers", 
+      CommandRecord "rerate" "" rerateCommand
+        "reset my rating to the starting default" ]
 
 adminCommandList :: [CommandRecord]
 adminCommandList = commandList ++ [
@@ -806,6 +808,35 @@ cleanCommand [] cs = do
         my_game _ = False
         close_game gr = writeChan (game_resv_wakeup gr) Nevermind
 cleanCommand _ cs = usage "clean" cs
+
+rerateCommand :: Command
+rerateCommand [] cs = do
+  maybe_my_name <- liftIO $ readIORef (cs_me cs)
+  case maybe_my_name of
+    Nothing ->
+      sPutLn cs "403 please use the me command first"
+    Just my_name -> do
+      ss <- liftIO $ takeMVar (cs_state cs)
+      case pw_lookup ss my_name of
+        Nothing -> do
+          liftIO $ putMVar (cs_state cs) ss
+          logMsg $ "client " ++ cs_client_id cs ++ " name " ++
+                   my_name ++ "not in password file"
+          sPutLn cs "500 you do not exist: go away"
+        Just _ -> do
+          let ServiceState game_id game_list pwf = ss
+          let newrating e@(PWFEntry n password _)
+               | n == my_name = PWFEntry n password baseRating
+               | otherwise = e
+          let pwf' = map newrating pwf
+          let ss' = ServiceState game_id game_list pwf'
+          liftIO $ do
+            write_pwf pwf'  --- XXX failure will hang server
+            putMVar (cs_state cs) ss'
+          sPutLn cs $ "203 rating reset for user " ++ my_name
+          logMsg $ "reset rating for client " ++ cs_client_id cs ++
+                   " user " ++ my_name
+rerateCommand _ cs = usage "rerate" cs
 
 stopCommand :: Command
 stopCommand [] cs = do
