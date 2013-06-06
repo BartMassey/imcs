@@ -23,7 +23,7 @@ import Data.List
 import Data.Maybe
 import Data.Ord
 import Network
-import Random
+import System.Random
 import System.Exit
 import System.FilePath
 import System.IO
