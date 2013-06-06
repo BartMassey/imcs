@@ -833,7 +833,7 @@ rerateCommand [] cs = do
           liftIO $ do
             write_pwf pwf'  --- XXX failure will hang server
             putMVar (cs_state cs) ss'
-          sPutLn cs $ "203 rating reset for user " ++ my_name
+          sPutLn cs $ "206 rating reset for user " ++ my_name
           logMsg $ "reset rating for client " ++ cs_client_id cs ++
                    " user " ++ my_name
 rerateCommand _ cs = usage "rerate" cs
