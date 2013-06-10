@@ -109,19 +109,19 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
   let elapsed = fromIntegral (now_msecs - then_msecs)
   let time' = update_time this_t elapsed
   case time' of
-    TimeRemaining 0 -> time_win
+    TimeRemaining 0 -> free_win "time"
     _ -> do
       case movt of
-        Timeout -> time_win
-        Disconnect -> disconnect_win
+        Timeout -> free_win "time"
+        Disconnect -> free_win "disconnect"
         Resign -> do
           let loser = (showSide . problemToMove) problem
           case loser of
             'B' -> do
-              report "231" "W wins on opponent resignation"
+              report problem "231" "W wins on opponent resignation"
               return $ Right 1
             'W' -> do
-              report "232" "B wins on opponent resignation"
+              report problem "232" "B wins on opponent resignation"
               return $ Right (-1)
             _ -> error "internal error: unknown color"
         IllegalMove s -> do
@@ -146,13 +146,13 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
             True -> do
               case captured of
                 'k' -> do
-                  report "231" "W wins"
+                  report problem' "231" "W wins"
                   return $ Right 1
                 'K' -> do
-                  report "232" "B wins"
+                  report problem' "232" "B wins"
                   return $ Right (-1)
                 _   -> do
-                  report "230" "draw"
+                  report problem' "230" "draw"
                   return $ Right 0
             False -> do
               return (Left (problem', start_clock time'))
@@ -160,24 +160,14 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
     to_move = problemToMove problem
     this_side = [showSide to_move]
     other_side = [showSide $ opponent to_move]
-    time_win = do
+    free_win cause = do
       let loser = (showSide . problemToMove) problem
       case loser of
         'B' -> do
-          report "231" "W wins on opponent time"
+          report problem "231" ("W wins on opponent " ++ cause)
           return $ Right 1
         'W' -> do
-          report "232" "B wins on opponent time"
-          return $ Right (-1)
-        _ -> error "internal error: unknown color"
-    disconnect_win = do
-      let loser = (showSide . problemToMove) problem
-      case loser of
-        'B' -> do
-          report "231" "W wins on opponent disconnect"
-          return $ Right 1
-        'W' -> do
-          report "232" "B wins on opponent disconnect"
+          report problem "232" ("B wins on opponent " ++ cause)
           return $ Right (-1)
         _ -> error "internal error: unknown color"
     execute_move mov = do
@@ -186,10 +176,12 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
       stop <- gameOver state' undo
       problem' <- snapshotState state'
       return (capture undo, stop, problem')
-    report code msg = do
-      logMsg $ code ++ " " ++ msg
+    report pr code msg = do
       let result1 = "= " ++ msg
       let result2 = code ++ " " ++ msg
+      logMsg ""
+      logMsg $ showProblem pr
+      logMsg result1
       safe_stc $ do
         stc result1 (this_side ++ " report result") this_h other_h
         stc result2 (this_side ++ " report result code") this_h other_h
