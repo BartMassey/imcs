@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 --- Copyright © 2009 Bart Massey
 --- ALL RIGHTS RESERVED
 --- [This program is licensed under the "MIT License"]
@@ -7,6 +8,7 @@
 module Game(CState, doProblem, doGame) where
 
 import Control.Concurrent.Timeout
+import Control.Exception.Base (catch)
 import Control.Monad.ST
 import System.IO
 import System.Time
@@ -19,12 +21,23 @@ import State
 
 type CState = (Handle, Maybe Int)
 
-data MoveResult = Timeout | Resign | InvalidMove String | IllegalMove String | GoodMove Move
+data MoveResult = Timeout | Resign | InvalidMove String 
+                | IllegalMove String | GoodMove Move | Disconnect
+
+sendToClient :: LogIO () -> String -> Handle -> LogIO ()
+sendToClient action desc other_h =
+  catchLogIO 
+    action
+    (\e -> do
+        alsoLogMsg other_h $ desc ++ " failed: " ++ show e
+        liftIO $ ioError $ 
+          userError $ "connection failed before/during " ++ desc)
 
 read_move :: Problem -> (Handle, TimerState) -> IO MoveResult
 read_move problem (handle, deadline) =
-  (move_result . fmap words)  `fmap`
-    timeout microsecs (sGetLine handle)
+  (catch :: IO MoveResult -> (IOError -> IO MoveResult) -> IO MoveResult)
+    ((move_result . fmap words) `fmap` timeout microsecs (sGetLine handle))
+    (\_ -> return Disconnect)
   where
     microsecs =
       case deadline of
@@ -83,9 +96,13 @@ type TurnResult = Either (Problem, TimerState) Int
 
 do_turn :: TCState -> TCState -> Problem -> LogIO TurnResult
 do_turn (this_h, this_t) (other_h, other_t) problem = do
-  alsoLogMsg this_h ""
-  alsoLogMsg this_h (showProblem problem)
-  alsoLogMsg this_h (times_fmt this_t other_t)
+  sendToClient
+    (do
+        alsoLogMsg this_h ""
+        alsoLogMsg this_h (showProblem problem)
+        alsoLogMsg this_h (times_fmt this_t other_t))
+    (this_side ++ " send move request")
+    other_h
   then_msecs <- liftIO $ get_clock_time_ms
   movt <- liftIO $ read_move problem (this_h, this_t)
   now_msecs <- liftIO $ get_clock_time_ms
@@ -96,27 +113,35 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
     _ -> do
       case movt of
         Timeout -> time_win
+        Disconnect -> disconnect_win
         Resign -> do
           let loser = (showSide . problemToMove) problem
           case loser of
             'B' -> do
-              report "231" "W wins on resignation"
+              report "231" "W wins on opponent resignation"
               return $ Right 1
             'W' -> do
-              report "232" "B wins on resignation"
+              report "232" "B wins on opponent resignation"
               return $ Right (-1)
             _ -> error "internal error: unknown color"
         IllegalMove s -> do
-          alsoLogMsg this_h ("- illegal move " ++ s)
+          sendToClient
+            (alsoLogMsg other_h ("- illegal move " ++ s))
+            (other_side ++ " send illegal move notice")
+            this_h
           return (Left (problem, time'))
         InvalidMove s -> do
-          alsoLogMsg this_h ("- invalid move" ++ s)
+          sendToClient
+            (alsoLogMsg other_h ("- invalid move " ++ s))
+            (other_side ++ " send illegal move notice")
+            this_h
           return (Left (problem, time'))
         GoodMove mov -> do
           let (captured, stop, problem') = runST (execute_move mov)
           let move_string = showMove mov
           logMsg move_string
-          sPutStrLn other_h $ "! " ++ move_string
+          let what = other_side ++ " move string send"
+          sendToClient (sPutStrLn other_h $ "! " ++ move_string) what this_h
           case stop of
             True -> do
               case captured of
@@ -132,14 +157,27 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
             False -> do
               return (Left (problem', start_clock time'))
   where
+    to_move = problemToMove problem
+    this_side = [showSide to_move]
+    other_side = [showSide $ opponent to_move]
     time_win = do
       let loser = (showSide . problemToMove) problem
       case loser of
         'B' -> do
-          report "231" "W wins on time"
+          report "231" "W wins on opponent time"
           return $ Right 1
         'W' -> do
-          report "232" "B wins on time"
+          report "232" "B wins on opponent time"
+          return $ Right (-1)
+        _ -> error "internal error: unknown color"
+    disconnect_win = do
+      let loser = (showSide . problemToMove) problem
+      case loser of
+        'B' -> do
+          report "231" "W wins on opponent disconnect"
+          return $ Right 1
+        'W' -> do
+          report "232" "B wins on opponent disconnect"
           return $ Right (-1)
         _ -> error "internal error: unknown color"
     execute_move mov = do
@@ -149,13 +187,22 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
       problem' <- snapshotState state'
       return (capture undo, stop, problem')
     report code msg = do
-      sPutStrLn this_h $ "= " ++ msg
-      sPutStrLn other_h $ "= " ++ msg
-      sPutStrLn this_h $ code ++ " " ++ msg
-      sPutStrLn other_h $ code ++ " " ++ msg
       logMsg $ code ++ " " ++ msg
+      let result1 = "= " ++ msg
+      let result2 = code ++ " " ++ msg
+      safe_stc $ do
+        stc result1 (this_side ++ " report result") this_h other_h
+        stc result2 (this_side ++ " report result code") this_h other_h
+      safe_stc $ do
+        stc result1 (other_side ++ " report result") other_h this_h
+        stc result2 (other_side ++ " report result code") other_h this_h
       liftIO $ hClose this_h
       liftIO $ hClose other_h
+      where
+        safe_stc action =
+          catchLogIO action (\_ -> return ())
+        stc m desc th oh =
+          sendToClient (sPutStrLn th m) desc oh
 
 run_game :: Problem -> TCState -> TCState -> LogIO Int
 run_game problem (h, t) other = do

@@ -28,11 +28,13 @@ by protocol version.
 212 ratings ...
 230 draw
 231 W wins
-231 B resigns
-231 B loses on time
+231 W wins on opponent resignation
+231 W wins on opponent time
+231 W wins on opponent disconnect
 232 B wins
-232 W resigns
-232 W loses on time
+232 B wins on opponent resignation
+232 B wins on opponent time
+232 B wins on opponent disconnect
 400 no such username
 401 wrong password
 402 username already exists
