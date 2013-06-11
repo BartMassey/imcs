@@ -395,6 +395,15 @@ readMe cs = liftIO $ readIORef $ cs_me cs
 shClose :: CommandState -> ELIO ()
 shClose cs = liftIO $ hClose $ cs_h cs
 
+updatePWFByName :: String -> (PWFEntry -> PWFEntry) -> [PWFEntry]
+                -> [PWFEntry]
+updatePWFByName name up es =
+  map update es
+  where
+    update e
+      | pwf_entry_name e == name = up e
+      | otherwise = e
+
 helpCommand :: Command
 helpCommand [] cs = do
   maybe_my_name <- readMe cs
@@ -476,10 +485,8 @@ passwordCommand [password] cs = do
           sPutLn cs "500 you do not exist: go away"
         Just _ -> do
           let ServiceState game_id game_list pwf = ss
-          let newpass e@(PWFEntry n _ rating)
-               | n == my_name = PWFEntry n password rating
-               | otherwise = e
-          let pwf' = map newpass pwf
+          let pwf' = updatePWFByName my_name
+                       (\e -> e { _pwf_entry_password = password }) pwf
           let ss' = ServiceState game_id game_list pwf'
           liftIO $ write_pwf pwf'  --- XXX failure will hang server
           putState cs ss'
@@ -638,10 +645,8 @@ offerCommand' opt_color opt_times cs = do
                       let ra' = updateRating ra rb s
                       ss' <- liftIO $ takeMVar $ cs_state cs
                       let ServiceState game_id''' game_list''' pwf''' = ss'
-                      let newpass e@(PWFEntry n password _)
-                            | n == name = PWFEntry n password ra'
-                            | otherwise = e
-                      let pwf' = map newpass pwf'''
+                      let pwf' = updatePWFByName name
+                            (\e -> e { pwf_entry_rating = ra' }) pwf'''
                       let ss'' = ServiceState game_id''' game_list''' pwf'
                       liftIO $ write_pwf pwf'   --- XXX failure hangs server
                       liftIO $ putMVar (cs_state cs) ss''
@@ -825,10 +830,8 @@ rerateCommand [] cs = do
           sPutLn cs "500 you do not exist: go away"
         Just _ -> do
           let ServiceState game_id game_list pwf = ss
-          let newrating e@(PWFEntry n password _)
-               | n == my_name = PWFEntry n password baseRating
-               | otherwise = e
-          let pwf' = map newrating pwf
+          let pwf' = updatePWFByName my_name
+                       (\e -> e { pwf_entry_rating = baseRating }) pwf
           let ss' = ServiceState game_id game_list pwf'
           liftIO $ do
             write_pwf pwf'  --- XXX failure will hang server
