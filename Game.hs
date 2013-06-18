@@ -10,6 +10,7 @@ module Game(CState, doProblem, doGame) where
 import Control.Concurrent.Timeout
 import Control.Exception.Base (catch)
 import Control.Monad.ST
+import Data.Char
 import System.IO
 import System.Time
 import Text.Printf
@@ -94,6 +95,15 @@ times_fmt this_t other_t =
 type TCState = (Handle, TimerState)
 type TurnResult = Either (Problem, TimerState) Int
 
+sanitize_string :: String -> String
+sanitize_string s = 
+  concatMap sanitize_char s
+  where
+    sanitize_char '\\' = "\\\\"
+    sanitize_char c
+      | isPrint c = [c]
+      | otherwise = printf "\\[%02x]" $ ord c
+
 do_turn :: TCState -> TCState -> Problem -> LogIO TurnResult
 do_turn (this_h, this_t) (other_h, other_t) problem = do
   sendToClient
@@ -126,15 +136,15 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
             _ -> error "internal error: unknown color"
         IllegalMove s -> do
           sendToClient
-            (alsoLogMsg other_h ("- illegal move " ++ s))
+            (alsoLogMsg this_h ("- illegal move " ++ s))
             (other_side ++ " send illegal move notice")
-            this_h
+            other_h
           return (Left (problem, time'))
         InvalidMove s -> do
           sendToClient
-            (alsoLogMsg other_h ("- invalid move " ++ s))
-            (other_side ++ " send illegal move notice")
-            this_h
+            (alsoLogMsg this_h ("- invalid move " ++ sanitize_string s))
+            (other_side ++ " send invalid move notice")
+            other_h
           return (Left (problem, time'))
         GoodMove mov -> do
           let (captured, stop, problem') = runST (execute_move mov)
