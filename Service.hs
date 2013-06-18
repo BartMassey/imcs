@@ -575,11 +575,9 @@ offerCommand' opt_color opt_times cs = do
         Nothing ->
           sPutLn cs "404 must set name first using me command"
         Just my_name -> do
-          logMsg $ "client " ++ cs_client_id cs ++
-                   " offers game as " ++ my_color
-          wakeup <- liftIO $ newChan
           ss <- takeState cs
           let ServiceState game_id game_list pwf = ss
+          wakeup <- liftIO $ newChan
           let new_game =
                 GameResv game_id my_name (cs_client_id cs) 
                          (head my_color) tc wakeup
@@ -587,6 +585,8 @@ offerCommand' opt_color opt_times cs = do
                 ServiceState (game_id + 1) (game_list ++ [new_game]) pwf
           liftIO $ write_game_id (game_id + 1)   --- XXX failure hangs server
           putState cs service_state'
+          logMsg $ "client " ++ cs_client_id cs ++
+                   " offers game " ++ show game_id ++ " as " ++ my_color
           sPutLn cs $ "103 " ++ show game_id ++
                       " game waiting for offer acceptance"
           w <- liftIO $ readChan wakeup
