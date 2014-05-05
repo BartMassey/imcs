@@ -137,13 +137,13 @@ do_turn (this_h, this_t) (other_h, other_t) problem = do
         IllegalMove s -> do
           sendToClient
             (alsoLogMsg this_h ("- illegal move " ++ s))
-            (other_side ++ " send illegal move notice")
+            (this_side ++ " send illegal move notice")
             other_h
           return (Left (problem, time'))
         InvalidMove s -> do
           sendToClient
             (alsoLogMsg this_h ("- invalid move " ++ sanitize_string s))
-            (other_side ++ " send invalid move notice")
+            (this_side ++ " send invalid move notice")
             other_h
           return (Left (problem, time'))
         GoodMove mov -> do
