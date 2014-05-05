@@ -62,7 +62,7 @@ source-repository head
 source-repository this
   type:     git
   location: http://git@github.com/BartMassey/imcs.git
-  tag:      2.5.0.0
+  tag:      v2.5.0.1
 
 executable imcs
   -- .hs or .lhs file containing the Main module.
