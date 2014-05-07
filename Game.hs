@@ -7,11 +7,19 @@
 
 module Game(CState, doProblem, doGame) where
 
+#if __GLASGOW_HASKELL__ < 706
+import Prelude hiding (catch)
+#endif
 import Control.Concurrent.Timeout
 import Control.Exception.Base (catch)
 import Control.Monad.ST
 import Data.Char
 import System.IO
+#if __GLASGOW_HASKELL__ < 706
+import System.IO.Error hiding (catch)
+#else
+import System.IO.Error
+#endif
 import System.Time
 import Text.Printf
 
