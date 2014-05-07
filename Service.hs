@@ -348,7 +348,7 @@ commandList = [
       CommandRecord "list" "" listCommand "list available games",
       CommandRecord "ratings" "" ratingsCommand 
         "list player ratings (top 10 plus own)",
-      CommandRecord "offer" "[<color>] [<time> [<opp-time>]]" offerCommand
+      CommandRecord "offer" "[<my-color>] [<my-time> [<opp-time>]]" offerCommand
         "offer a game with given constraints",
       CommandRecord "accept" "<game-id> [<my-color>]" acceptCommand
         "accept a game with an opponent",
