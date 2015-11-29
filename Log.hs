@@ -5,7 +5,7 @@
 --- Please see the file COPYING in the source
 --- distribution of this software for license terms.
 
-module Log (LogIO, MonadLogIO, liftIO, withLogDo, logMsg, alsoLogMsg,
+module Log (LogIO, ELIO, MonadLogIO, liftIO, withLogDo, logMsg, alsoLogMsg,
            forkLogIO, catchLogIO, sPutStrLn)
 where
 
@@ -14,7 +14,7 @@ import Prelude hiding (catch)
 #endif
 import Control.Concurrent
 import Control.Exception.Base
-import Control.Monad.Error
+import Control.Monad.Except
 import Control.Monad.Reader
 import System.IO
 
@@ -22,9 +22,11 @@ import SNewLine
 
 type LogIO = ReaderT Handle IO
 
+type ELIO = ExceptT () LogIO
+
 class (MonadIO m, MonadReader Handle m) => MonadLogIO m
 instance MonadLogIO LogIO
-instance (Error e, MonadLogIO m) => MonadLogIO (ErrorT e m)
+instance MonadLogIO ELIO
 
 logMsg :: MonadLogIO m => String -> m ()
 logMsg msg = do

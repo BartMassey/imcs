@@ -10,7 +10,7 @@ name:                imcs
 -- PVP summary:      +-+------- breaking API changes
 --                   | | +----- non-breaking API additions
 --                   | | | +--- code changes with no API change
-version:             2.5.0.1
+version:             2.5.0.2
 
 -- A short (one-line) description of the package.
 synopsis:            Internet MiniChess Server
@@ -95,3 +95,4 @@ executable imcs
   -- Base language which the package is written in.
   default-language:    Haskell98
   
+  ghc-options:         -Wall

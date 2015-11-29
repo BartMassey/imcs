@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, FlexibleInstances #-}
 --- Copyright © 2009 Bart Massey
 --- ALL RIGHTS RESERVED
 --- [This program is licensed under the "MIT License"]
@@ -19,7 +19,7 @@ import Control.Concurrent
 import Control.Exception (evaluate, throw)
 import Control.Exception.Base (catch, IOException)
 import Control.Monad
-import Control.Monad.Error
+import Control.Monad.Except
 import Data.Char
 import Data.IORef
 import Data.List
@@ -297,10 +297,6 @@ parse_int s
 pw_lookup :: ServiceState -> String -> Maybe (String, Rating)
 pw_lookup ss name = lookup name pwf where
     pwf = map (\(PWFEntry n p r) -> (n, (p, r))) $ service_state_pwf ss
-
-type ELIO = ErrorT () LogIO
-
-instance Error ()
 
 finish :: ELIO ()
 finish = throwError ()
@@ -874,7 +870,7 @@ doCommands (main_thread, reaccept) (h, client_id) state = do
   sPutStrLn h $ "100 imcs " ++ version
   me <- liftIO $ newIORef Nothing
   let params = CS main_thread reaccept h client_id state me
-  _ <- runErrorT $ forever $ do
+  _ <- runExceptT $ forever $ do
     line <- liftIO $ sGetLine h
     case words line of
       [] -> 
