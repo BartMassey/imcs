@@ -717,6 +717,7 @@ offerCommand args cs = do
       t2 <- parse_time a2
       return $ Just (t1, t2)
     parse_times _ = Nothing
+    parse_time :: String -> Maybe Int
     parse_time a =
       case getAllTextSubmatches (a =~ timeRE) of
         [] -> Nothing
