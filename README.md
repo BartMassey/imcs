@@ -1,16 +1,16 @@
 # Internet MiniChess Server
 
-Copyright &copy; 2007-2013 Bart Massey  
-Please see the file COPYING in this distribution for license
+Copyright &copy; 2007-2017 Bart Massey  
+Please see the file `COPYING` in this distribution for license
 information.
 
 This package is a communications server and referee for
-games of MinitChess played online. See
+games of MiniChess played online. See
 <http://wiki.cs.pdx.edu/minichess/> for more information on
-MinitChess.
+MiniChess.
 
 Building this package requires a Haskell compiler; it is
-known to work with GHC 7.6. This package requires the
+known to work with GHC 8.0.1. This package requires the
 following extra packages available from Hackage:
 
   * parseargs: provides `System.Console.ParseArgs`, my argument parser
@@ -19,14 +19,15 @@ following extra packages available from Hackage:
   * random: provides `System.Random` (may be provided in newer libs)
   * unbounded-delays: provides `Control.Concurrent.Timeout`
 
-All but the last are also available as Debian packages.
+All are also available as Debian packages.
 
 The program provides a service to which a client can connect
 and either offer a game or accept a game from an existing
 client.  Once both players are in place, the service accepts
 moves from each side in turn on its connection.  The server
 prompts each side with the game state to allow easy sanity
-checks.
+checks. It also acts as a referee, preventing illegal moves
+and determining game outcome.
 
 ## Invocation
 
