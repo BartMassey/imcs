@@ -355,6 +355,8 @@ commandList = [
 
 adminCommandList :: [CommandRecord]
 adminCommandList = commandList ++ [
+      CommandRecord "showpass" "<user> <password>" showpassCommand
+        "display the password for the given user",
       CommandRecord "stop" "" stopCommand 
         "stop the server and wait for in-process games" ]
 
@@ -864,6 +866,23 @@ stopCommand [] cs = do
             readMVar w
     Just _ -> sPutLn cs "502 admin only"
 stopCommand _ cs = usage "stop" cs
+
+showpassCommand :: Command
+showpassCommand [user] cs = do
+  maybe_my_name <- readMe cs
+  case maybe_my_name of
+    Nothing -> sPutLn cs "406 must set name first using me command"
+    Just "admin" -> do
+      ss <- readState cs
+      case pw_lookup ss user of
+        Nothing -> do
+          logMsg $ "password for user " ++ user ++ " not in password file"
+          sPutLn cs "400 no such username"
+        Just (password, _) -> do
+          logMsg $ "displaying password for " ++ user
+          sPutLn cs $ "207 password for " ++ user ++ " is " ++ password
+    Just _ -> sPutLn cs "502 admin only"
+showpassCommand _ cs = usage "showpass" cs
 
 doCommands :: (ThreadId, MVar Bool) -> (Handle, String)
            -> MVar ServiceState -> LogIO ()
