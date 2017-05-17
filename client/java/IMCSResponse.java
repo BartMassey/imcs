@@ -15,13 +15,14 @@ class IMCSResponse {
     public String message;
 
     /**
-     * Check whether this Response has the given required code. If not, throw a {@see RuntimeException}.
-     * @param requiredCode Code to check the Response's code against.
-     * @throws RuntimeException When the required response code does not match the one we got.
+     * Check whether this Response has one of the given required codes. If not, throw a {@see RuntimeException}.
+     * @param requiredCodes List of codes that should be accepted.
+     * @throws RuntimeException When no required response code does match the one we got.
      */
-    public void assertHasCode(int requiredCode) {
-        if(code != requiredCode)
-            throw new RuntimeException("Got unexpected response: " + code + " " + message);
+    public int assertHasCode(int... requiredCodes) {
+        for(int requiredCode : requiredCodes)
+            if(code == requiredCode) return code;
+        throw new RuntimeException("Got unexpected response: " + code + " " + message);
     }
 
     /**
