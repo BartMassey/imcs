@@ -10,8 +10,14 @@ import java.util.regex.Pattern;
  */
 public class IMCSGame {
     public String gameId;
+    public String ownerName = null;
     public char reservedPlayer = 0;
     public boolean isRunning = false;
+
+    @Override
+    public String toString() {
+        return String.format("Game[gameId: '%s', owner: '%s', ownerPlayer: '%s']", gameId, ownerName, reservedPlayer);
+    }
 
     /**
      * Parse the given line (from the game listing) to a IMCSGame object.
@@ -26,11 +32,12 @@ public class IMCSGame {
         if(offerMatcher.matches() || progressMatcher.matches()) {
             result = new IMCSGame();
             result.isRunning = progressMatcher.matches();
-            if(result.isRunning) {
+            if(result.isRunning) { // running match
                 result.gameId = progressMatcher.group(1);
-            } else {
+            } else { // waiting match
                 result.gameId = offerMatcher.group(1);
                 result.reservedPlayer = offerMatcher.group(3).charAt(0);
+                result.ownerName = offerMatcher.group(2);
             }
         }
         return result;
