@@ -262,7 +262,7 @@ public class Client {
         sendCommand(IMCSCommands.OFFER);
         awaitResponse().assertHasCode(103); // waiting for opponent
         IMCSResponse gameStartResponse = awaitResponse();
-        gameStartResponse.assertHasCode(106); // game started
+        gameStartResponse.assertHasCode(105, 106); // game started
         return gameStartResponse.message.charAt(0);
     }
 
@@ -273,9 +273,9 @@ public class Client {
      * @throws RuntimeException When the required response code does not match the one received.
      */
     public void offerGameAndWait(char player) throws IOException, RuntimeException {
-        sendCommand(IMCSCommands.OFFER);
+        sendCommand(IMCSCommands.OFFER, player);
         awaitResponse().assertHasCode(103); // waiting for opponent
-        awaitResponse().assertHasCode(106); // game started
+        awaitResponse().assertHasCode(105, 106); // game started
     }
 
 
