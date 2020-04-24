@@ -78,7 +78,7 @@ executable imcs
   
   -- Other library packages from which modules are imported.
   build-depends:       base >=4,
-                       network >=2,
+                       network ==2.*,
                        parseargs >=0.1,
                        mtl >=2.1 ,
                        random >=1,
