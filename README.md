@@ -1,3 +1,4 @@
+
 # Internet MiniChess Server
 
 Copyright &copy; 2007-2017 Bart Massey  
@@ -46,3 +47,15 @@ cause the server to exit.
 
 The `--port <n>` argument sets the server listening port;
 the current default port is, for no very good reason, 3589.
+
+
+## Running With Docker
+
+The provided `Dockerfile` can be used to run this program inside a docker container.
+You can build the image using the following command inside the root directory of this project:
+
+    docker build -t imcs .
+You can then start a container with the following command:
+
+    docker run -itd -p 3589:3589 imcs
+
