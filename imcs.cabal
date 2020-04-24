@@ -69,12 +69,12 @@ executable imcs
   main-is:             IMCS.hs
   
   -- Modules included in this executable, other than Main.
-  -- other-modules:       Board Game Log Rating
-  --                      SNewLine Service State Version
+  other-modules:       Board Game Log Rating
+                       SNewLine Service State Version
   
   -- LANGUAGE extensions used by modules in this package.
-  -- other-extensions:    CPP, FlexibleContexts,
-  --                      FlexibleInstances, TypeSynonymInstances
+  other-extensions:    CPP, FlexibleContexts,
+                       FlexibleInstances, TypeSynonymInstances
   
   -- Other library packages from which modules are imported.
   build-depends:       base >=4,
